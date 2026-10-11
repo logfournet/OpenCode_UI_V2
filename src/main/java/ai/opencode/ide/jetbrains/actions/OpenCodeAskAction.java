@@ -33,7 +33,7 @@ public class OpenCodeAskAction extends AnAction {
         if (project == null || project.isDisposed()) return;
         String ref = OpenCodeReference.from(project, e);
         String text = ref.isEmpty() ? prompt : prompt + " " + ref;
-        ServiceManager.getService(project, OpenCodeService.class).focusOrCreateTerminalAndPaste(text);
+        ServiceManager.getService(project, OpenCodeService.class).focusOrCreateTerminalAndRun(text);
     }
 
     @Override

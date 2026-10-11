@@ -90,6 +90,8 @@ public final class OpenCodeService implements Disposable {
     private volatile JPanel terminalPanel;
     private volatile String cachedBinary;
     private final AtomicBoolean terminalCommandStarted = new AtomicBoolean(false);
+    /** When the opencode TUI process was launched (for boot-delay heuristics). */
+    private volatile long terminalStartedAt;
 
     private final ScheduledExecutorService poller;
 
@@ -465,6 +467,7 @@ public final class OpenCodeService implements Disposable {
         if (!terminalCommandStarted.compareAndSet(false, true)) return;
         try {
             widget.executeCommand(buildOpenCodeCommand());
+            terminalStartedAt = System.currentTimeMillis();
         } catch (Throwable t) {
             LOG.warn("Failed to start opencode in terminal", t);
         }
@@ -544,15 +547,32 @@ public final class OpenCodeService implements Disposable {
 
     /** Focus the TUI and paste a reference (e.g. "@path#L1-5 ") as context. */
     public void focusOrCreateTerminalAndPaste(String text) {
+        focusOrCreateTerminalAndType(text, false);
+    }
+
+    /**
+     * Focus the TUI, type the given text and press Enter so it runs immediately.
+     * Used by the code actions (Explain / Fix / Refactor ...) where the user
+     * expects the request to start without an extra keypress.
+     */
+    public void focusOrCreateTerminalAndRun(String text) {
+        focusOrCreateTerminalAndType(text, true);
+    }
+
+    private void focusOrCreateTerminalAndType(String text, boolean submit) {
         if (text == null || text.isBlank() || project.isDisposed()) return;
         focusOrCreateTerminal();
+        // If the TUI was just launched it needs a few seconds to boot before it
+        // can accept input; otherwise the typed text would be lost.
+        long sinceStart = System.currentTimeMillis() - terminalStartedAt;
+        long bootWait = terminalStartedAt == 0 ? 0 : Math.max(0, 3500 - sinceStart);
         AppExecutorUtil.getAppExecutorService().execute(() -> {
             ShellTerminalWidget widget = terminalWidget;
             if (widget == null) return;
             ApplicationManager.getApplication().invokeLater(() -> {
                 if (project.isDisposed()) return;
                 try {
-                    // Focus the terminal so the pasted text is visible.
+                    // Focus the terminal so the typed text is visible.
                     final ShellTerminalWidget w = widget;
                     final Project p = project;
                     ApplicationManager.getApplication().invokeLater(() -> {
@@ -562,14 +582,43 @@ public final class OpenCodeService implements Disposable {
                         } catch (Exception ignored) {
                         }
                     });
-                    com.jediterm.terminal.ui.JediTermWidget jt = w;
-                    com.jediterm.terminal.TerminalStarter starter = jt.getTerminalStarter();
-                    starter.sendString(text, false);
+                    if (bootWait > 0) {
+                        // Wait for the TUI to boot, then type (and optionally submit).
+                        poller.schedule(
+                                () -> ApplicationManager.getApplication().invokeLater(
+                                        () -> typeIntoTerminal(w, text, submit)),
+                                bootWait, TimeUnit.MILLISECONDS);
+                    } else {
+                        typeIntoTerminal(w, text, submit);
+                    }
                 } catch (Exception e) {
                     LOG.debug("paste via terminal failed", e);
                 }
             });
         });
+    }
+
+    /** Send the text to the TUI and, when requested, press Enter shortly after. */
+    private void typeIntoTerminal(ShellTerminalWidget w, String text, boolean submit) {
+        if (project.isDisposed()) return;
+        try {
+            w.getTerminalStarter().sendString(text, false);
+            if (submit) {
+                // Let the TUI render the typed text before submitting it, so the
+                // prompt is accepted rather than dropped.
+                poller.schedule(
+                        () -> ApplicationManager.getApplication().invokeLater(() -> {
+                            try {
+                                if (!project.isDisposed()) {
+                                    w.getTerminalStarter().sendBytes(new byte[]{'\r'}, false);
+                                }
+                            } catch (Throwable ignored) {
+                            }
+                        }), 250, TimeUnit.MILLISECONDS);
+            }
+        } catch (Throwable t) {
+            LOG.debug("type into terminal failed", t);
+        }
     }
 
     /** Type a line into the OpenCode TUI and press Enter. */
@@ -610,6 +659,7 @@ public final class OpenCodeService implements Disposable {
         terminalWidget = null;
         terminalPanel = null;
         terminalCommandStarted.set(false);
+        terminalStartedAt = 0;
         LOG.info("OpenCode terminal disposed");
     }
 
@@ -934,6 +984,7 @@ public final class OpenCodeService implements Disposable {
         terminalWidget = null;
         terminalPanel = null;
         terminalCommandStarted.set(false);
+        terminalStartedAt = 0;
         if (w != null) {
             try {
                 w.dispose();

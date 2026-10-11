@@ -34,7 +34,7 @@ public final class OpenCodeAskWithPromptAction extends AnAction {
         if (prompt == null || prompt.isBlank()) return;
         String ref = OpenCodeReference.from(project, e);
         String text = ref.isEmpty() ? prompt.trim() : prompt.trim() + " " + ref;
-        ServiceManager.getService(project, OpenCodeService.class).focusOrCreateTerminalAndPaste(text);
+        ServiceManager.getService(project, OpenCodeService.class).focusOrCreateTerminalAndRun(text);
     }
 
     @Override
