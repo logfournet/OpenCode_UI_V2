@@ -6,6 +6,8 @@ code editor stays visible next to the agent — the familiar
 **file tree | code | agent** layout.
 
 > **Marketplace:** <https://plugins.jetbrains.com/plugin/29744-opencode-ui>
+>
+> **Author:** logatic
 
 ---
 
@@ -197,3 +199,9 @@ src/main/resources/META-INF/plugin.xml, icons/opencode.svg
 
 - **JetBrains Marketplace:** <https://plugins.jetbrains.com/plugin/29744-opencode-ui>
 - **OpenCode:** <https://opencode.ai>
+
+---
+
+## Author
+
+Developed by **logatic**.
