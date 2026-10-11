@@ -109,5 +109,20 @@
                 description="Show the diff of the last OpenCode turn">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
+
+        <action id="OpenCode.CopyOutput"
+                class="ai.opencode.ide.jetbrains.actions.CopyOutputAction"
+                text="OpenCode: Copy Output as Markdown"
+                description="Copy the whole OpenCode terminal output as a Markdown code block">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+
+        <group id="OpenCode.EditorActions"
+               class="ai.opencode.ide.jetbrains.actions.OpenCodeActionsGroup"
+               text="OpenCode"
+               description="Ask OpenCode about the selection"
+               popup="true">
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="OpenCode.AddLines"/>
+        </group>
     </actions>
 </idea-plugin>

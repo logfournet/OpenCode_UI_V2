@@ -23,10 +23,22 @@ public final class OpenCodeStatusBarWidget implements StatusBarWidget, StatusBar
     private final OpenCodeService service;
     private volatile StatusBar statusBar;
     private final Runnable refresh = this::refreshWidget;
+    private final javax.swing.Timer spinner;
+    private int frame;
+
+    private static final String[] FRAMES = {"\u280B", "\u2819", "\u2839", "\u2838", "\u283C",
+            "\u2834", "\u2826", "\u2827", "\u2807", "\u280F"};
 
     public OpenCodeStatusBarWidget(@NotNull Project project) {
         this.project = project;
         this.service = ServiceManager.getService(project, OpenCodeService.class);
+        // Animate the spinner while a turn is running.
+        this.spinner = new javax.swing.Timer(120, e -> {
+            if (service.isBusy()) {
+                frame = (frame + 1) % FRAMES.length;
+                refreshWidget();
+            }
+        });
     }
 
     @Override
@@ -38,10 +50,12 @@ public final class OpenCodeStatusBarWidget implements StatusBarWidget, StatusBar
     public void install(@NotNull StatusBar statusBar) {
         this.statusBar = statusBar;
         service.addListener(refresh);
+        if (!spinner.isRunning()) spinner.start();
     }
 
     @Override
     public void dispose() {
+        spinner.stop();
         service.removeListener(refresh);
         statusBar = null;
     }
@@ -70,9 +84,9 @@ public final class OpenCodeStatusBarWidget implements StatusBarWidget, StatusBar
 
     @Override
     public @NotNull String getText() {
-        if (!service.isConnected()) return "◉ OpenCode";
-        if (service.isBusy()) return "● OpenCode";
-        return "◉ OpenCode";
+        if (service.isBusy()) return FRAMES[frame] + " OpenCode";
+        if (!service.isConnected()) return "\u25CB OpenCode";
+        return "\u25C9 OpenCode";
     }
 
     @Override

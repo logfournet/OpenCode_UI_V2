@@ -314,6 +314,7 @@ public final class OpenCodeService implements Disposable {
             installEscIntercept(widget);
             JPanel panel = new JPanel(new BorderLayout());
             panel.add(widget.getComponent(), BorderLayout.CENTER);
+            installFileDrop(panel, widget);
             terminalWidget = widget;
             terminalPanel = panel;
             attachTerminalContent(panel);
@@ -349,6 +350,77 @@ public final class OpenCodeService implements Disposable {
             ApplicationManager.getApplication().invokeLater(() -> {
                 if (!project.isDisposed()) ensureTerminal();
             });
+        }
+    }
+
+    /**
+     * Accept files dropped onto the OpenCode panel and paste them as
+     * {@code @path} references into the TUI input. The handler is installed on
+     * both the wrapping panel and the terminal component so a drop anywhere in
+     * the panel works.
+     */
+    private void installFileDrop(JPanel panel, ShellTerminalWidget widget) {
+        javax.swing.TransferHandler handler = new javax.swing.TransferHandler() {
+            @Override
+            public boolean canImport(TransferSupport support) {
+                return support.isDrop() && support.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.javaFileListFlavor);
+            }
+
+            @Override
+            @SuppressWarnings("unchecked")
+            public boolean importData(TransferSupport support) {
+                if (!canImport(support)) return false;
+                try {
+                    java.util.List<java.io.File> files = (java.util.List<java.io.File>)
+                            support.getTransferable().getTransferData(java.awt.datatransfer.DataFlavor.javaFileListFlavor);
+                    if (files == null || files.isEmpty()) return false;
+                    String base = project.getBasePath();
+                    StringBuilder sb = new StringBuilder();
+                    for (java.io.File f : files) {
+                        String path = f.getAbsolutePath().replace('\\', '/');
+                        String rel = path;
+                        if (base != null) {
+                            String bp = base.replace('\\', '/');
+                            if (path.startsWith(bp + "/")) rel = path.substring(bp.length() + 1);
+                        }
+                        sb.append('@').append(rel.contains(" ") ? "\"" + rel + "\"" : rel).append(' ');
+                    }
+                    if (sb.length() > 0) {
+                        String text = sb.toString().trim();
+                        ApplicationManager.getApplication().invokeLater(() -> {
+                            try {
+                                widget.getTerminalStarter().sendString(text, false);
+                            } catch (Throwable t) {
+                                LOG.debug("file drop paste failed", t);
+                            }
+                        });
+                    }
+                    return true;
+                } catch (Exception ex) {
+                    LOG.debug("file drop import failed", ex);
+                    return false;
+                }
+            }
+        };
+        panel.setTransferHandler(handler);
+        try {
+            widget.getComponent().setTransferHandler(handler);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Copy the whole terminal buffer to the clipboard as a Markdown code block. */
+    public void copyOutputAsMarkdown() {
+        ShellTerminalWidget w = terminalWidget;
+        if (w == null) return;
+        try {
+            String text = w.getText();
+            if (text == null || text.isBlank()) return;
+            String md = "```\n" + text.stripTrailing() + "\n```";
+            com.intellij.openapi.ide.CopyPasteManager.getInstance()
+                    .setContents(new java.awt.datatransfer.StringSelection(md));
+        } catch (Throwable t) {
+            LOG.debug("copy output failed", t);
         }
     }
 

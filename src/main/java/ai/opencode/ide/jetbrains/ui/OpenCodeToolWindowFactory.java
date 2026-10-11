@@ -1,5 +1,6 @@
 package ai.opencode.ide.jetbrains.ui;
 
+import ai.opencode.ide.jetbrains.actions.CopyOutputAction;
 import ai.opencode.ide.jetbrains.actions.InterruptAction;
 import ai.opencode.ide.jetbrains.actions.NewSessionAction;
 import ai.opencode.ide.jetbrains.actions.OpenDiffsAction;
@@ -34,7 +35,8 @@ public final class OpenCodeToolWindowFactory implements ToolWindowFactory {
         toolWindow.setTitleActions(List.of(
                 new NewSessionAction(),
                 new InterruptAction(),
-                new OpenDiffsAction()
+                new OpenDiffsAction(),
+                new CopyOutputAction()
         ));
     }
 }
