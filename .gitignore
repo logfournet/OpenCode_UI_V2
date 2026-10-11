@@ -1,0 +1,19 @@
+# Gradle
+.gradle/
+build/
+buildSrc/build/
+.intellijPlatform/
+
+# Built plugin artifacts are kept in dist/ for the GitHub release
+
+# Throwaway offline test of UnifiedPatch (not part of the plugin source)
+patchtest/
+
+# IntelliJ
+.idea/
+*.iml
+out/
+.DS_Store
+
+# Sandbox IDE
+.run/

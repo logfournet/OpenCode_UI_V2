@@ -1,0 +1,98 @@
+<idea-plugin>
+    <id>ai.opencode.ide.jetbrains</id>
+    <name>OpenCode UI</name>
+    <version>2.0.0</version>
+    <vendor url="https://opencode.ai">OpenCode</vendor>
+
+    <description><![CDATA[
+      <p>OpenCode UI - AI Coding Agent for JetBrains IDEs.</p>
+      <p>Integrates the IDE with the OpenCode 2.x background service, with the
+      same terminal-based experience as before:</p>
+      <ul>
+        <li>Click the <b>OpenCode</b> icon (or <code>Ctrl+\</code>) to open the
+            OpenCode TUI in an IDE editor tab.</li>
+        <li>The TUI connects to the running OpenCode 2.x background service
+            (reads <code>service.json</code>) — no separate server spawn, so no
+            more "server dead" restarts.</li>
+        <li>Send files / selections to the agent with <code>Ctrl+Alt+K</code>.</li>
+        <li>Clickable <code>@path</code> links in the terminal.</li>
+        <li>Native multi-file diff viewer with Accept / Reject when a turn ends.</li>
+      </ul>
+    ]]></description>
+
+    <change-notes><![CDATA[
+      <p>2.0.0 - Rewritten for the OpenCode 2.x background service
+      (<code>/api/*</code> HTTP surface + Basic Auth, auto-reconnect).
+      Terminal TUI UX matching the 1.x plugin, without the "server dead" issue.</p>
+    ]]></change-notes>
+
+    <idea-version since-build="242"/>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceImplementation="ai.opencode.ide.jetbrains.service.OpenCodeService"/>
+        <projectService serviceImplementation="ai.opencode.ide.jetbrains.session.SessionManager"/>
+        <projectService serviceImplementation="ai.opencode.ide.jetbrains.diff.DiffHandler"/>
+
+        <fileEditorProvider implementation="ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalFileEditorProvider"/>
+
+        <toolWindow id="OpenCode"
+                    anchor="right"
+                    icon="/icons/opencode.svg"
+                    factoryClass="ai.opencode.ide.jetbrains.ui.OpenCodeToolWindowFactory"/>
+
+        <notificationGroup id="OpenCode" displayType="BALLOON"/>
+    </extensions>
+
+    <projectListeners>
+        <listener class="ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalEditorListener"
+                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+    </projectListeners>
+
+    <actions>
+        <action id="OpenCode.QuickLaunch"
+                class="ai.opencode.ide.jetbrains.actions.QuickLaunchAction"
+                text="Open OpenCode"
+                description="Open or focus the OpenCode terminal"
+                icon="/icons/opencode.svg">
+            <keyboard-shortcut keymap="$default" first-keystroke="control BACK_SLASH"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta ESCAPE"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta ESCAPE"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+
+        <action id="OpenCode.AddLines"
+                class="ai.opencode.ide.jetbrains.actions.SendSelectionToTerminalAction"
+                text="Add lines to OpenCode Terminal"
+                icon="/icons/opencode.svg">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt K"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt meta K"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt meta K"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+
+        <action id="OpenCode.AddFile"
+                class="ai.opencode.ide.jetbrains.actions.SendSelectionToTerminalAction"
+                text="Add to OpenCode Terminal"
+                icon="/icons/opencode.svg">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt K"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt meta K"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt meta K"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+
+        <action id="OpenCode.Interrupt"
+                class="ai.opencode.ide.jetbrains.actions.InterruptAction"
+                text="OpenCode: Stop"
+                description="Interrupt the current OpenCode generation"/>
+
+        <action id="OpenCode.OpenDiffs"
+                class="ai.opencode.ide.jetbrains.actions.OpenDiffsAction"
+                text="OpenCode: Review Diffs"
+                description="Show the diff of the last OpenCode turn">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>
