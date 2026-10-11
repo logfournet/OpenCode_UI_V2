@@ -6,11 +6,12 @@
 
     <description><![CDATA[
       <p>OpenCode UI - AI Coding Agent for JetBrains IDEs.</p>
-      <p>Integrates the IDE with the OpenCode 2.x background service, with the
-      same terminal-based experience as before:</p>
+      <p>Integrates the IDE with the OpenCode 2.x background service:</p>
       <ul>
-        <li>Click the <b>OpenCode</b> icon (or <code>Ctrl+\</code>) to open the
-            OpenCode TUI in an IDE editor tab.</li>
+        <li>Click the <b>OpenCode</b> icon (or <code>Ctrl+\</code>) to open a
+            dedicated <b>OpenCode panel</b> on the right side hosting the OpenCode
+            TUI — the code editor stays visible next to the agent
+            ("file tree | code | agent" layout).</li>
         <li>The TUI connects to the running OpenCode 2.x background service
             (reads <code>service.json</code>) — no separate server spawn, so no
             more "server dead" restarts.</li>
@@ -23,7 +24,8 @@
     <change-notes><![CDATA[
       <p>2.0.0 - Rewritten for the OpenCode 2.x background service
       (<code>/api/*</code> HTTP surface + Basic Auth, auto-reconnect).
-      Terminal TUI UX matching the 1.x plugin, without the "server dead" issue.</p>
+      OpenCode TUI now lives in a docked side panel so you can read the code
+      while the agent works.</p>
     ]]></change-notes>
 
     <idea-version since-build="242"/>
@@ -36,8 +38,6 @@
         <projectService serviceImplementation="ai.opencode.ide.jetbrains.session.SessionManager"/>
         <projectService serviceImplementation="ai.opencode.ide.jetbrains.diff.DiffHandler"/>
 
-        <fileEditorProvider implementation="ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalFileEditorProvider"/>
-
         <toolWindow id="OpenCode"
                     anchor="right"
                     icon="/icons/opencode.svg"
@@ -45,11 +45,6 @@
 
         <notificationGroup id="OpenCode" displayType="BALLOON"/>
     </extensions>
-
-    <projectListeners>
-        <listener class="ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalEditorListener"
-                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
-    </projectListeners>
 
     <actions>
         <action id="OpenCode.QuickLaunch"

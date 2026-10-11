@@ -106,6 +106,53 @@ public final class UnifiedPatch {
         return sb.toString();
     }
 
+    /**
+     * Extracts the full "added" content of a brand-new file directly from its
+     * unified diff. Works for hunks like {@code @@ -0,0 +1,N @@} where the patch
+     * body is only {@code +} lines. Returns null when the patch is not a clean
+     * file addition (e.g. it also has context or {@code -} lines).
+     */
+    public static String extractAddedContent(String patch) {
+        if (patch == null) return null;
+        String[] raw = patch.split("\n", -1);
+        List<Hunk> hunks = parseHunks(raw);
+        if (hunks.isEmpty()) return null;
+        boolean onlyAdditions = true;
+        for (Hunk h : hunks) {
+            if (h.oldStart != 0 || h.oldCount != 0) onlyAdditions = false;
+            for (String line : h.body) {
+                if (line.isEmpty()) continue;
+                char tag = line.charAt(0);
+                if (tag == '-' || tag == ' ') {
+                    onlyAdditions = false;
+                    break;
+                }
+            }
+        }
+        if (!onlyAdditions) return null;
+
+        List<String> lines = new ArrayList<>();
+        boolean noNewlineMarker = false;
+        for (Hunk h : hunks) {
+            for (String line : h.body) {
+                if (line.isEmpty()) continue;
+                char tag = line.charAt(0);
+                if (tag == '\\') {
+                    noNewlineMarker = true;
+                } else if (tag == '+') {
+                    lines.add(line.length() > 1 ? line.substring(1) : "");
+                }
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int k = 0; k < lines.size(); k++) {
+            if (k > 0) sb.append('\n');
+            sb.append(lines.get(k));
+        }
+        if (!noNewlineMarker) sb.append('\n');
+        return sb.toString();
+    }
+
     private static List<Hunk> parseHunks(String[] raw) {
         List<Hunk> hunks = new ArrayList<>();
         int i = 0;

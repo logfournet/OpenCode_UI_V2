@@ -9,10 +9,7 @@ import ai.opencode.ide.jetbrains.patch.UnifiedPatch;
 import ai.opencode.ide.jetbrains.session.FileDiff;
 import ai.opencode.ide.jetbrains.session.SessionInfo;
 import ai.opencode.ide.jetbrains.session.SessionManager;
-import ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalFileEditor;
-import ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalFileEditorProvider;
 import ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalLinkFilter;
-import ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalVirtualFile;
 import ai.opencode.ide.jetbrains.ui.OpenCodeConnectDialog;
 import ai.opencode.ide.jetbrains.util.ServerConnection;
 import com.google.gson.JsonObject;
@@ -23,16 +20,19 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.fileEditor.FileEditor;
-import com.intellij.openapi.fileEditor.FileEditorManager;
-import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.wm.ToolWindow;
+import com.intellij.openapi.wm.ToolWindowManager;
+import com.intellij.ui.content.Content;
+import com.intellij.ui.content.ContentFactory;
+import com.intellij.ui.content.ContentManager;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import org.jetbrains.plugins.terminal.ShellTerminalWidget;
 import org.jetbrains.plugins.terminal.TerminalView;
 
+import java.awt.BorderLayout;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -43,6 +43,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import javax.swing.JPanel;
 
 /**
  * Central project service: discovers the OpenCode v2 background server, keeps an
@@ -77,11 +79,12 @@ public final class OpenCodeService implements Disposable {
     private volatile boolean turnActive;
     private final AtomicBoolean turnChecked = new AtomicBoolean(false);
 
-    // Terminal UI (mirrors the 1.x "OpenCode tab in the editor area" UX).
-    private volatile OpenCodeTerminalVirtualFile terminalVirtualFile;
-    private volatile OpenCodeTerminalFileEditor terminalEditor;
+    // Terminal UI: the OpenCode TUI lives in a docked ToolWindow panel (not an
+    // editor tab), so the code editor stays visible alongside the agent.
     private volatile ShellTerminalWidget terminalWidget;
+    private volatile JPanel terminalPanel;
     private volatile String cachedBinary;
+    private final AtomicBoolean terminalCommandStarted = new AtomicBoolean(false);
 
     private final ScheduledExecutorService poller;
 
@@ -236,85 +239,99 @@ public final class OpenCodeService implements Disposable {
     }
 
     // ------------------------------------------------------------------
-    // Terminal UI (OpenCode TUI in an editor-area tab, same UX as 1.x)
+    // Terminal UI (OpenCode TUI docked in a ToolWindow panel)
     // ------------------------------------------------------------------
 
     /**
-     * Open (or focus) the OpenCode TUI terminal tab. This is what the sidebar
-     * icon and the QuickLaunch action call.
+     * Show the OpenCode tool window and make sure the TUI is running inside it.
+     * The TUI lives in its own dockable panel (right side by default) instead of
+     * an editor tab, so the code editor stays visible while chatting with the
+     * agent — the "files | code | agent" layout used by other AI plugins.
      */
     public void focusOrCreateTerminal() {
         if (project.isDisposed()) return;
-        if (hasTerminalUI()) {
-            focusTerminalUI();
-            return;
-        }
-        if (isConnected() || connecting) {
-            // Connected to the v2 background service: just open the TUI, which
-            // connects to that same service (no --hostname/--port spawning).
-            createTerminalUI();
-            return;
-        }
-        // First connect (silently re-discover service.json), then open the TUI.
-        connect();
-        // Opening the terminal does not depend on the API; the TUI itself talks
-        // to the service. Open it right away.
-        createTerminalUI();
-    }
-
-    /** True when the OpenCode terminal tab is currently open in an editor. */
-    public boolean hasTerminalUI() {
-        OpenCodeTerminalVirtualFile f = terminalVirtualFile;
-        if (f == null) return false;
-        try {
-            return FileEditorManager.getInstance(project).isFileOpen(f);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private void focusTerminalUI() {
-        OpenCodeTerminalVirtualFile f = terminalVirtualFile;
-        if (f != null) {
+        // Make sure the plugin's own connection is up so diffs / turn tracking work
+        // while the user chats with the agent in the panel.
+        if (!isConnected() && !connecting) connect();
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (project.isDisposed()) return;
             try {
-                FileEditorManager.getInstance(project).openFile(f, true);
+                ToolWindow tw = getToolWindow();
+                if (tw != null) tw.activate(null, false);
             } catch (Exception ignored) {
             }
+        });
+        // Create the widget + panel now if needed (idempotent). The tool window
+        // factory uses the same panel when it attaches content.
+        ensureTerminalOnEdt();
+    }
+
+    /** True when the OpenCode terminal widget has been created (panel exists). */
+    public boolean hasTerminalUI() {
+        return terminalWidget != null;
+    }
+
+    /**
+     * Return (creating if needed) the JPanel hosting the OpenCode TUI, and attach
+     * it as the tool window content the first time. Called by the tool window
+     * factory / {@link #focusOrCreateTerminal()} on the EDT.
+     */
+    public synchronized JPanel ensureTerminal() {
+        if (terminalWidget != null && terminalPanel != null) return terminalPanel;
+        try {
+            String wd = project.getBasePath();
+            ShellTerminalWidget widget = TerminalView.getInstance(project)
+                    .createLocalShellWidget(wd, "OpenCode");
+            OpenCodeTerminalLinkFilter.install(project, widget);
+            JPanel panel = new JPanel(new BorderLayout());
+            panel.add(widget.getComponent(), BorderLayout.CENTER);
+            terminalWidget = widget;
+            terminalPanel = panel;
+            attachTerminalContent(panel);
+            // Defer the command so the widget is attached to a visible component first.
+            ApplicationManager.getApplication().invokeLater(this::startTerminalCommandIfNeeded);
+            LOG.info("OpenCode terminal panel created");
+        } catch (Throwable t) {
+            LOG.warn("OpenCode terminal unavailable", t);
+            notify("OpenCode", "Could not open the terminal panel: " + t.getMessage(),
+                    NotificationType.ERROR);
+            return null;
+        }
+        return terminalPanel;
+    }
+
+    /** Replace the placeholder tool window content with the live terminal panel. */
+    private void attachTerminalContent(JPanel panel) {
+        try {
+            ToolWindow tw = getToolWindow();
+            if (tw == null) return;
+            ContentManager cm = tw.getContentManager();
+            for (Content c : cm.getContents()) cm.removeContent(c, true);
+            cm.addContent(ContentFactory.getInstance().createContent(panel, "", false));
+        } catch (Exception e) {
+            LOG.warn("Failed to attach terminal content", e);
         }
     }
 
-    /** Create the OpenCode terminal tab and run the TUI in it. */
-    private void createTerminalUI() {
-        try {
-            String tabName = "OpenCode";
-            String wd = project.getBasePath();
-            ShellTerminalWidget widget = TerminalView.getInstance(project).createLocalShellWidget(wd, tabName);
-            OpenCodeTerminalLinkFilter.install(project, widget);
-            OpenCodeTerminalVirtualFile f = new OpenCodeTerminalVirtualFile(tabName);
-            terminalVirtualFile = f;
-            terminalWidget = widget;
-            OpenCodeTerminalFileEditorProvider.registerWidget(f, widget);
-
+    private void ensureTerminalOnEdt() {
+        if (ApplicationManager.getApplication().isDispatchThread()) {
+            ensureTerminal();
+        } else {
             ApplicationManager.getApplication().invokeLater(() -> {
-                if (project.isDisposed()) return;
-                try {
-                    FileEditor[] editors = FileEditorManager.getInstance(project).openFile(f, true);
-                    for (FileEditor ed : editors) {
-                        if (ed instanceof OpenCodeTerminalFileEditor) {
-                            terminalEditor = (OpenCodeTerminalFileEditor) ed;
-                            break;
-                        }
-                    }
-                    widget.executeCommand(buildOpenCodeCommand());
-                    pinTerminalTab(f);
-                } catch (Exception e) {
-                    LOG.warn("Failed to create OpenCode terminal editor", e);
-                }
+                if (!project.isDisposed()) ensureTerminal();
             });
+        }
+    }
+
+    /** Launch {@code opencode} in the widget exactly once. */
+    private void startTerminalCommandIfNeeded() {
+        ShellTerminalWidget widget = terminalWidget;
+        if (widget == null) return;
+        if (!terminalCommandStarted.compareAndSet(false, true)) return;
+        try {
+            widget.executeCommand(buildOpenCodeCommand());
         } catch (Throwable t) {
-            LOG.warn("OpenCode terminal unavailable", t);
-            notify("OpenCode", "Could not open the terminal tab: " + t.getMessage(),
-                    NotificationType.ERROR);
+            LOG.warn("Failed to start opencode in terminal", t);
         }
     }
 
@@ -361,13 +378,11 @@ public final class OpenCodeService implements Disposable {
         return System.getProperty("os.name", "").toLowerCase().contains("windows");
     }
 
-    private void pinTerminalTab(VirtualFile f) {
+    private ToolWindow getToolWindow() {
         try {
-            FileEditorManagerEx editorManager = FileEditorManagerEx.getInstanceEx(project);
-            if (editorManager.getCurrentWindow() != null) {
-                editorManager.getCurrentWindow().setFilePinned(f, true);
-            }
-        } catch (Exception ignored) {
+            return ToolWindowManager.getInstance(project).getToolWindow("OpenCode");
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -381,7 +396,17 @@ public final class OpenCodeService implements Disposable {
             ApplicationManager.getApplication().invokeLater(() -> {
                 if (project.isDisposed()) return;
                 try {
-                    com.jediterm.terminal.ui.JediTermWidget jt = widget;
+                    // Focus the terminal so the pasted text is visible.
+                    final ShellTerminalWidget w = widget;
+                    final Project p = project;
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        try {
+                            ToolWindow tw = ToolWindowManager.getInstance(p).getToolWindow("OpenCode");
+                            if (tw != null) tw.activate(null, false);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                    com.jediterm.terminal.ui.JediTermWidget jt = w;
                     com.jediterm.terminal.TerminalStarter starter = jt.getTerminalStarter();
                     starter.sendString(text, false);
                 } catch (Exception e) {
@@ -391,11 +416,11 @@ public final class OpenCodeService implements Disposable {
         });
     }
 
-    /** Called when the terminal tab was truly closed (after the disposal grace period). */
+    /** Called when the terminal panel was disposed (tool window closed for good / project close). */
     public void onTerminalDisposed() {
-        terminalVirtualFile = null;
-        terminalEditor = null;
         terminalWidget = null;
+        terminalPanel = null;
+        terminalCommandStarted.set(false);
         LOG.info("OpenCode terminal disposed");
     }
 
@@ -523,12 +548,29 @@ public final class OpenCodeService implements Disposable {
         AppExecutorUtil.getAppExecutorService().execute(() -> {
             try {
                 List<JsonObject> list = api.sessionDiff(sid, anchor, null);
-                List<ResolvedDiff> resolved = new ArrayList<>();
-                SessionManager sm = ServiceManager.getService(project, SessionManager.class);
+                List<FileDiff> diffs = new ArrayList<>();
                 for (JsonObject o : list) {
                     try {
-                        FileDiff fd = FileDiff.fromJson(o);
+                        diffs.add(FileDiff.fromJson(o));
+                    } catch (Exception e) {
+                        LOG.debug("parse diff failed", e);
+                    }
+                }
+                // Refresh the VFS first: files the AI just created on disk may not be
+                // known to IntelliJ yet, so reading their content before the refresh
+                // would yield empty "after" content for brand-new files.
+                forceVfsRefresh(diffs);
+                List<ResolvedDiff> resolved = new ArrayList<>();
+                SessionManager sm = ServiceManager.getService(project, SessionManager.class);
+                for (FileDiff fd : diffs) {
+                    try {
                         String after = readCurrentContent(fd.file);
+                        if (after.isEmpty() && fd.isNewFile()) {
+                            // Safety net: reconstruct the content from the patch when the
+                            // VFS still cannot see the brand-new file.
+                            String fromPatch = UnifiedPatch.extractAddedContent(fd.patch);
+                            if (fromPatch != null) after = fromPatch;
+                        }
                         String before = resolveBefore(fd, after, sm);
                         resolved.add(new ResolvedDiff(fd, before, after));
                     } catch (Exception e) {
@@ -555,6 +597,33 @@ public final class OpenCodeService implements Disposable {
         }
         String reverse = UnifiedPatch.reverseApply(fd.patch, after);
         return reverse != null ? reverse : "";
+    }
+
+    /**
+     * Makes IntelliJ's VFS aware of files OpenCode just created, modified or
+     * deleted on disk. Without this, brand-new files are invisible to the VFS
+     * and {@link #readCurrentContent} returns empty content for them.
+     */
+    private void forceVfsRefresh(List<FileDiff> diffs) {
+        if (diffs == null || diffs.isEmpty()) return;
+        try {
+            String base = project.getBasePath();
+            if (base == null) return;
+            List<File> files = new ArrayList<>();
+            for (FileDiff d : diffs) {
+                File ioFile = new File(base, d.file.replace('/', File.separatorChar));
+                // If the file is deleted, refresh the parent directory so the
+                // deletion is picked up.
+                if (!ioFile.exists() && ioFile.getParentFile() != null) ioFile = ioFile.getParentFile();
+                if (ioFile.exists()) files.add(ioFile);
+            }
+            if (!files.isEmpty()) {
+                LOG.info("OpenCode: forcing VFS refresh for " + files.size() + " paths");
+                LocalFileSystem.getInstance().refreshIoFiles(files, false, false, null);
+            }
+        } catch (Exception e) {
+            LOG.debug("VFS refresh skipped: " + e.getMessage());
+        }
     }
 
     private String readCurrentContent(String rel) {
@@ -632,9 +701,16 @@ public final class OpenCodeService implements Disposable {
         teardown();
         poller.shutdownNow();
         listeners.clear();
-        OpenCodeTerminalFileEditorProvider.clearAll();
-        terminalVirtualFile = null;
-        terminalEditor = null;
+        // Dispose the terminal widget if still alive.
+        ShellTerminalWidget w = terminalWidget;
         terminalWidget = null;
+        terminalPanel = null;
+        terminalCommandStarted.set(false);
+        if (w != null) {
+            try {
+                w.dispose();
+            } catch (Exception ignored) {
+            }
+        }
     }
 }
