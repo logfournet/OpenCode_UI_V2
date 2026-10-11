@@ -1,6 +1,7 @@
 package ai.opencode.ide.jetbrains.ui;
 
 import ai.opencode.ide.jetbrains.actions.InterruptAction;
+import ai.opencode.ide.jetbrains.actions.NewSessionAction;
 import ai.opencode.ide.jetbrains.actions.OpenDiffsAction;
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
 import com.intellij.openapi.components.ServiceManager;
@@ -31,6 +32,7 @@ public final class OpenCodeToolWindowFactory implements ToolWindowFactory {
         svc.ensureTerminal();
         // Quick actions in the tool window title bar.
         toolWindow.setTitleActions(List.of(
+                new NewSessionAction(),
                 new InterruptAction(),
                 new OpenDiffsAction()
         ));

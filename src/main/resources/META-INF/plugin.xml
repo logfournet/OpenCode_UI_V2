@@ -47,6 +47,13 @@
 
         <statusBarWidgetFactory id="OpenCodeStatusBar"
                                 implementation="ai.opencode.ide.jetbrains.ui.OpenCodeStatusBarWidgetFactory"/>
+
+        <postStartupActivity implementation="ai.opencode.ide.jetbrains.ui.OpenCodeStartupActivity"/>
+
+        <projectConfigurable instance="ai.opencode.ide.jetbrains.ui.OpenCodeSettingsConfigurable"
+                            displayName="OpenCode"
+                            id="ai.opencode.ide.jetbrains.settings"
+                            parentId="tools"/>
     </extensions>
 
     <actions>
@@ -79,6 +86,13 @@
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt meta K"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt meta K"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="first"/>
+        </action>
+
+        <action id="OpenCode.NewSession"
+                class="ai.opencode.ide.jetbrains.actions.NewSessionAction"
+                text="OpenCode: New Session"
+                description="Start a fresh OpenCode session">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
         <action id="OpenCode.Interrupt"

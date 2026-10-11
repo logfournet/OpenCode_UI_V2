@@ -135,6 +135,29 @@ public final class OpenCodeService implements Disposable {
         });
     }
 
+    /**
+     * Connect on project open without ever showing the manual dialog. If the
+     * background service is not discoverable we just stay idle; the user can
+     * still open the panel / run {@link #connect()} manually.
+     */
+    public void autoConnect() {
+        if (connected || connecting || disposed.get()) return;
+        connecting = true;
+        notifyChanged();
+        AppExecutorUtil.getAppExecutorService().execute(() -> {
+            try {
+                ServerConnection c = ServerConnection.discover();
+                if (c != null && ServerConnection.isReachable(c, 1500)) {
+                    OpenCodeApiClient probe = new OpenCodeApiClient(c.url, "opencode", c.password);
+                    if (probe.info() != null) applyConnection(c);
+                }
+            } finally {
+                connecting = false;
+                notifyChanged();
+            }
+        });
+    }
+
     /** Apply a discovered or hand-entered connection. Returns true when connected. */
     public boolean applyConnection(ServerConnection c) {
         if (c == null || disposed.get()) return false;
@@ -387,9 +410,30 @@ public final class OpenCodeService implements Disposable {
         return cmd.contains(" ") ? "\"" + cmd + "\"" : cmd;
     }
 
+    /** Forget the cached binary path (called after the setting changes). */
+    public void resetCachedBinary() {
+        cachedBinary = null;
+    }
+
     /** Resolve the opencode CLI binary (cache result). */
     private String getOpenCodeBinary() {
         if (cachedBinary != null) return cachedBinary;
+        // 1) Explicit path from settings, if any.
+        try {
+            com.intellij.ide.util.PropertiesComponent pc =
+                    com.intellij.ide.util.PropertiesComponent.getInstance(project);
+            String configured = pc.getValue("opencode.binaryPath", "");
+            if (configured != null && !configured.isBlank()) {
+                File f = new File(configured.trim());
+                if (f.exists() && f.canExecute()) {
+                    cachedBinary = f.getAbsolutePath();
+                    return cachedBinary;
+                }
+                LOG.warn("Configured OpenCode binary not executable, falling back: " + configured);
+            }
+        } catch (Exception ignored) {
+            // Settings unavailable (e.g. during early startup) -> auto-detect.
+        }
         String home = System.getProperty("user.home");
         String localAppData = System.getenv("LOCALAPPDATA");
         File[] candidates = isWindows()
@@ -454,6 +498,39 @@ public final class OpenCodeService implements Disposable {
                 }
             });
         });
+    }
+
+    /** Type a line into the OpenCode TUI and press Enter. */
+    public void sendCommandToTerminal(String command) {
+        if (command == null || command.isBlank() || project.isDisposed()) return;
+        focusOrCreateTerminal();
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (project.isDisposed()) return;
+            ShellTerminalWidget widget = terminalWidget;
+            if (widget == null) return;
+            try {
+                widget.getTerminalStarter().sendString(command + "\r", false);
+            } catch (Throwable t) {
+                LOG.debug("sendCommandToTerminal failed", t);
+            }
+        });
+    }
+
+    /**
+     * Ask the OpenCode TUI to start a fresh session ({@code /new}) and, shortly
+     * after, re-discover the project's session so the plugin's diff/turn tracking
+     * follows the new one.
+     */
+    public void startNewSession() {
+        sendCommandToTerminal("/new");
+        poller.schedule(() -> {
+            try {
+                discoverSession();
+                notifyChanged();
+            } catch (Exception e) {
+                LOG.debug("session re-discovery after /new failed", e);
+            }
+        }, 3, TimeUnit.SECONDS);
     }
 
     /** Called when the terminal panel was disposed (tool window closed for good / project close). */
