@@ -18,6 +18,9 @@
         <li>Send files / selections to the agent with <code>Ctrl+Alt+K</code>.</li>
         <li>Clickable <code>@path</code> links in the terminal.</li>
         <li>Native multi-file diff viewer with Accept / Reject when a turn ends.</li>
+        <li>Status bar indicator + completion notification when the agent finishes.</li>
+        <li>Tool window actions: New Session, Stop (ESC), Review Diffs.</li>
+        <li>Settings (Settings &gt; Tools &gt; OpenCode): custom binary path + auto-connect.</li>
       </ul>
     ]]></description>
 
