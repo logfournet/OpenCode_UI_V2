@@ -33,6 +33,9 @@ import org.jetbrains.plugins.terminal.ShellTerminalWidget;
 import org.jetbrains.plugins.terminal.TerminalView;
 
 import java.awt.BorderLayout;
+import java.awt.KeyEventDispatcher;
+import java.awt.KeyboardFocusManager;
+import java.awt.event.KeyEvent;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -45,6 +48,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 
 /**
  * Central project service: discovers the OpenCode v2 background server, keeps an
@@ -85,6 +89,7 @@ public final class OpenCodeService implements Disposable {
     private volatile JPanel terminalPanel;
     private volatile String cachedBinary;
     private final AtomicBoolean terminalCommandStarted = new AtomicBoolean(false);
+    private java.awt.KeyEventDispatcher escDispatcher;
 
     private final ScheduledExecutorService poller;
 
@@ -283,6 +288,11 @@ public final class OpenCodeService implements Disposable {
             ShellTerminalWidget widget = TerminalView.getInstance(project)
                     .createLocalShellWidget(wd, "OpenCode");
             OpenCodeTerminalLinkFilter.install(project, widget);
+            // Intercept ESC when the terminal has focus: stop the current
+            // generation instead of jumping to the editor (IntelliJ's default).
+            // We use a KeyEventDispatcher because AnAction.registerCustomShortcutSet
+            // does not work when the actual focus is inside JediTerm's sub-components.
+            registerEscInterrupt(widget);
             JPanel panel = new JPanel(new BorderLayout());
             panel.add(widget.getComponent(), BorderLayout.CENTER);
             terminalWidget = widget;
@@ -321,6 +331,28 @@ public final class OpenCodeService implements Disposable {
                 if (!project.isDisposed()) ensureTerminal();
             });
         }
+    }
+
+    /** Intercept ESC in the terminal widget to stop generation instead of jumping to editor. */
+    private void registerEscInterrupt(ShellTerminalWidget widget) {
+        // Remove previous dispatcher if any (e.g. re-created widget).
+        if (escDispatcher != null) {
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(escDispatcher);
+        }
+        escDispatcher = e -> {
+            if (e.getID() == KeyEvent.KEY_PRESSED
+                    && e.getKeyCode() == KeyEvent.VK_ESCAPE
+                    && isBusy()) {
+                // Only intercept when the event target is inside the terminal widget.
+                if (SwingUtilities.isDescendingFrom(e.getComponent(), widget.getComponent())) {
+                    interrupt();
+                    e.consume();
+                    return true;
+                }
+            }
+            return false;
+        };
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(escDispatcher);
     }
 
     /** Launch {@code opencode} in the widget exactly once. */
@@ -701,6 +733,14 @@ public final class OpenCodeService implements Disposable {
         teardown();
         poller.shutdownNow();
         listeners.clear();
+        // Remove the ESC intercept dispatcher.
+        if (escDispatcher != null) {
+            try {
+                KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(escDispatcher);
+            } catch (Exception ignored) {
+            }
+            escDispatcher = null;
+        }
         // Dispose the terminal widget if still alive.
         ShellTerminalWidget w = terminalWidget;
         terminalWidget = null;
