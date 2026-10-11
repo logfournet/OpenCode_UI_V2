@@ -68,7 +68,7 @@
             <keyboard-shortcut keymap="$default" first-keystroke="control alt K"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt meta K"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt meta K"/>
-            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
         </action>
 
         <action id="OpenCode.AddFile"
@@ -78,7 +78,7 @@
             <keyboard-shortcut keymap="$default" first-keystroke="control alt K"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt meta K"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt meta K"/>
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="first"/>
         </action>
 
         <action id="OpenCode.Interrupt"
