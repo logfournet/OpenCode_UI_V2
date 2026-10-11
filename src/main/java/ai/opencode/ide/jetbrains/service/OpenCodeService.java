@@ -584,7 +584,7 @@ public final class OpenCodeService implements Disposable {
                     });
                     if (bootWait > 0) {
                         // Wait for the TUI to boot, then type (and optionally submit).
-                        poller.schedule(
+                        appScheduler().schedule(
                                 () -> ApplicationManager.getApplication().invokeLater(
                                         () -> typeIntoTerminal(w, text, submit)),
                                 bootWait, TimeUnit.MILLISECONDS);
@@ -604,9 +604,10 @@ public final class OpenCodeService implements Disposable {
         try {
             w.getTerminalStarter().sendString(text, false);
             if (submit) {
-                // Let the TUI render the typed text before submitting it, so the
-                // prompt is accepted rather than dropped.
-                poller.schedule(
+                // Let the TUI render the typed text (and close any @mention
+                // completion popup) before submitting, so Enter starts the
+                // request instead of just picking a completion.
+                appScheduler().schedule(
                         () -> ApplicationManager.getApplication().invokeLater(() -> {
                             try {
                                 if (!project.isDisposed()) {
@@ -614,11 +615,16 @@ public final class OpenCodeService implements Disposable {
                                 }
                             } catch (Throwable ignored) {
                             }
-                        }), 250, TimeUnit.MILLISECONDS);
+                        }), 450, TimeUnit.MILLISECONDS);
             }
         } catch (Throwable t) {
             LOG.debug("type into terminal failed", t);
         }
+    }
+
+    /** Shared scheduled executor for short UI-related delays. */
+    private static java.util.concurrent.ScheduledExecutorService appScheduler() {
+        return AppExecutorUtil.getAppScheduledExecutorService();
     }
 
     /** Type a line into the OpenCode TUI and press Enter. */

@@ -33,7 +33,9 @@ public final class OpenCodeAskWithPromptAction extends AnAction {
                 "What should OpenCode do?", "Ask OpenCode", Messages.getQuestionIcon());
         if (prompt == null || prompt.isBlank()) return;
         String ref = OpenCodeReference.from(project, e);
-        String text = ref.isEmpty() ? prompt.trim() : prompt.trim() + " " + ref;
+        // Reference first (space-terminated) so the @mention popup is closed
+        // before the request is submitted.
+        String text = ref.isEmpty() ? prompt.trim() : ref + " " + prompt.trim();
         ServiceManager.getService(project, OpenCodeService.class).focusOrCreateTerminalAndRun(text);
     }
 

@@ -32,7 +32,9 @@ public class OpenCodeAskAction extends AnAction {
         Project project = e.getProject();
         if (project == null || project.isDisposed()) return;
         String ref = OpenCodeReference.from(project, e);
-        String text = ref.isEmpty() ? prompt : prompt + " " + ref;
+        // Put the reference first, terminated by a space, so the TUI's @mention
+        // completion popup is already closed by the time the prompt is submitted.
+        String text = ref.isEmpty() ? prompt : ref + " " + prompt;
         ServiceManager.getService(project, OpenCodeService.class).focusOrCreateTerminalAndRun(text);
     }
 
