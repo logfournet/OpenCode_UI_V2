@@ -44,6 +44,9 @@
                     factoryClass="ai.opencode.ide.jetbrains.ui.OpenCodeToolWindowFactory"/>
 
         <notificationGroup id="OpenCode" displayType="BALLOON"/>
+
+        <statusBarWidgetFactory id="OpenCodeStatusBar"
+                                implementation="ai.opencode.ide.jetbrains.ui.OpenCodeStatusBarWidgetFactory"/>
     </extensions>
 
     <actions>

@@ -13,6 +13,8 @@ import ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalLinkFilter;
 import ai.opencode.ide.jetbrains.ui.OpenCodeConnectDialog;
 import ai.opencode.ide.jetbrains.util.ServerConnection;
 import com.google.gson.JsonObject;
+import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationAction;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.Disposable;
@@ -483,8 +485,8 @@ public final class OpenCodeService implements Disposable {
                 if (running) {
                     lastUserMsgId = null;
                 } else if (was) {
-                    // Turn just finished -> fetch diffs.
-                    refreshDiffs();
+                    // Turn just finished -> fetch diffs and notify the user.
+                    refreshDiffs(true);
                 }
                 notifyChanged();
             }
@@ -568,6 +570,18 @@ public final class OpenCodeService implements Disposable {
 
     /** Fetch /diff for the last completed turn and open the diff viewer. */
     public void refreshDiffs() {
+        refreshDiffs(false);
+    }
+
+    /**
+     * Fetch /diff for the last completed turn and open the diff viewer.
+     *
+     * @param notifyOnComplete when true (turn finished on its own) also show a
+     *                         balloon notification summarising the result, so the
+     *                         user notices the agent is done even when the panel
+     *                         is not focused.
+     */
+    public void refreshDiffs(boolean notifyOnComplete) {
         if (api == null || sessionId == null) return;
         String sid = sessionId;
         String from = lastUserMsgId;
@@ -621,8 +635,35 @@ public final class OpenCodeService implements Disposable {
                 if (!resolved.isEmpty() && !project.isDisposed()) {
                     new DiffViewerService(project).showDiffs(resolved);
                 }
+                if (notifyOnComplete) notifyTurnComplete(resolved);
             } catch (Exception e) {
                 LOG.warn("diff refresh failed", e);
+            }
+        });
+    }
+
+    /** Balloon shown when a turn finishes, with a shortcut to the diff viewer. */
+    private void notifyTurnComplete(List<ResolvedDiff> resolved) {
+        if (project.isDisposed()) return;
+        final List<ResolvedDiff> snapshot = new ArrayList<>(resolved);
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (project.isDisposed()) return;
+            try {
+                String title = "OpenCode finished";
+                String content = snapshot.isEmpty()
+                        ? "The agent finished with no file changes."
+                        : "The agent changed " + snapshot.size()
+                                + (snapshot.size() == 1 ? " file." : " files.");
+                Notification n = NotificationGroupManager.getInstance()
+                        .getNotificationGroup(OpenCodePlugin.NOTIFICATION_GROUP)
+                        .createNotification(title, content, NotificationType.INFORMATION);
+                if (!snapshot.isEmpty()) {
+                    n.addAction(NotificationAction.createSimpleExpiring(
+                            "Review Diffs", () -> new DiffViewerService(project).showDiffs(snapshot)));
+                }
+                n.notify(project);
+            } catch (Exception e) {
+                LOG.debug("completion notification failed", e);
             }
         });
     }
