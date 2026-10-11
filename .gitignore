@@ -4,7 +4,8 @@ build/
 buildSrc/build/
 .intellijPlatform/
 
-# Built plugin artifacts are kept in dist/ for the GitHub release
+# Built plugin artifacts are published to GitHub Releases (see .github workflow / releases)
+dist/
 
 # Throwaway offline test of UnifiedPatch (not part of the plugin source)
 patchtest/

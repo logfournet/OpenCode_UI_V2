@@ -1,40 +1,142 @@
-# OpenCode UI V2 (plugin IntelliJ)
+# OpenCode UI — JetBrains Plugin
 
-Plugin JetBrains kết nối IDE với **OpenCode CLI 2.x** chạy dưới dạng **background
-service** (`opencode serve --service`). Giao diện giống plugin 1.x: click icon
-**OpenCode** → mở tab **OpenCode TUI** trong editor area, kèm link click được
-`@path#Lx-y`, gửi file/selection làm context, và diff viewer Accept/Reject.
+Bring the **OpenCode** AI coding agent into IntelliJ IDEA, PyCharm, and other
+JetBrains IDEs. The plugin hosts the OpenCode TUI in a docked side panel so the
+code editor stays visible next to the agent — the familiar
+**file tree | code | agent** layout.
 
-> Thay thế plugin cũ OpenCode_UI 1.1.0 — bản cũ tự spawn server riêng bằng
-> `--hostname/--port` theo từng project nên hay bị **"server dead"**. Bản V2 chỉ
-> **kết nối tới background service duy nhất** (đọc `service.json`) nên không còn
-> hiện tượng đó; có auto-reconnect khi service tạm restart.
+> **Marketplace:** <https://plugins.jetbrains.com/plugin/29744-opencode-ui>
 
-## Tính năng
+---
 
-- Tự tìm service đang chạy: đọc `service.json`
-  (Windows: `%LOCALAPPDATA%\opencode\state\service.json`,
-  hoặc `~/.local/state/opencode/service.json`) → URL + password (Basic Auth).
-- Click icon **OpenCode** (hoặc `Ctrl+\` / `Cmd+Esc`) → mở **tab OpenCode TUI**
-  trong editor area, chạy lệnh `opencode` (TUI tự kết nối background service;
-  session theo thư mục project).
-- Nhiều IntelliJ / nhiều project dùng chung 1 service, mỗi project một session.
-- Phím tắt:
-  - `Ctrl+\` (macOS `Cmd+Esc`) — mở/focus tab OpenCode TUI.
-  - `Ctrl+Alt+K` — gửi file/selection làm context: `@path` hoặc `@path#Lx-y`
-    (paste vào TUI input).
-- Click `@path#Lx-y` trong TUI → mở file + highlight dòng.
-- Theo dõi `GET /api/event` (SSE, tự reconnect) + poll `/api/session/active`
-  để biết session chạy xong turn.
-- Khi turn kết thúc: `GET /api/session/{id}/diff?from=<userMsgId>` → mở diff
-  viewer native; nút **Accept** (ghi file + `git add`) / **Reject** (khôi phục
-  "before", dựng bằng reverse-apply unified patch lên nội dung hiện tại).
-- **Auto-reconnect**: ≥3 lần poll lỗi liên tiếp → tự re-discover `service.json`
-  và kết nối lại, không cần bấm nút.
+## Overview
 
-## Build
+This plugin connects the IDE to the **OpenCode 2.x background service**
+(`opencode serve --service`). Instead of spawning its own server per project
+(which caused the old *"server dead"* problem), it discovers and connects to the
+single running service via `service.json`, with automatic reconnection when the
+service restarts.
 
-Dùng **IntelliJ Platform Gradle Plugin 2.10.2** (JDK 17 target).
+- **One service, many projects** — multiple IDEs / projects share one background
+  service; each project gets its own session.
+- **Editor stays visible** — the agent lives in a docked panel, not an editor
+  tab.
+
+---
+
+## Features
+
+### Docked OpenCode panel
+- Click the **OpenCode** icon (or press `Ctrl+\`, macOS `Cmd+Esc`) to open the
+  panel on the right side.
+- The OpenCode TUI runs inside a real terminal widget, connected to the
+  background service (session is scoped to the project directory).
+
+### Service discovery & reconnection
+- Reads `service.json` to find the running service URL + password (Basic Auth):
+  - Windows: `%LOCALAPPDATA%\opencode\state\service.json`
+  - Other: `~/.local/state/opencode/service.json`
+- **Auto-connect** on project open (silent; never shows a dialog if the service
+  is not found).
+- **Auto-reconnect** after repeated poll failures — no manual "reconnect" needed
+  when the service restarts.
+- Manual connection dialog available if discovery fails.
+
+### Send code to the agent
+- **`Ctrl+Alt+K`** — send the current file/selection as context:
+  `@path` or `@path#Lx-y` (pasted into the TUI input).
+- **Right-click → OpenCode** submenu with one-click code actions:
+  - **Explain**, **Fix**, **Refactor**, **Add Tests**, **Optimize**, **Document**
+  - **Ask OpenCode…** — free-form prompt dialog
+  - These type the prompt and press Enter automatically, so the request starts
+    immediately.
+- **Drag & drop** files onto the panel to insert `@path` references.
+
+### Clickable file links
+- `@path`, `@"path with spaces"`, and `@path#Lx-y` inside the terminal are
+  clickable — clicking opens the file and highlights/scrolls to the lines.
+
+### Diff viewer with Accept / Reject
+- When a turn finishes, the plugin fetches the diff
+  (`GET /api/session/{id}/diff?from=<userMsgId>`) and opens IntelliJ's native
+  multi-file diff viewer.
+- Per-file **Accept** (write + `git add`) and **Reject** (restore the "before"
+  content, reconstructed by reverse-applying the unified patch).
+- Newly created files are picked up via a VFS refresh + patch fallback.
+
+### Status bar & notifications
+- **Status bar widget** shows the connection state and an animated spinner while
+  a turn is running; click to open the panel.
+- **Completion notification** when the agent finishes, including the number of
+  changed files and a **Review Diffs** action.
+
+### Tool window actions
+The panel's title bar provides quick actions:
+- **New Session** — start a fresh session (`/new`).
+- **Stop** — interrupt the current generation.
+- **Review Diffs** — reopen the last turn's diff.
+- **Copy Output as Markdown** — copy the whole terminal buffer as a fenced code
+  block.
+
+### ESC interrupts the turn
+- Pressing `Esc` in the panel stops the running generation (the plugin consumes
+  the key before IntelliJ's *jump-to-editor* escape handler and forwards it to
+  the TUI's `session.interrupt` binding).
+
+### Settings
+- **Settings → Tools → OpenCode**
+  - Custom path to the `opencode` binary (blank = auto-detect).
+  - Toggle auto-connect on project open.
+
+---
+
+## Requirements
+
+- A JetBrains IDE **2024.2+** (build 242+) — IntelliJ IDEA, PyCharm, and other
+  IDEs based on the IntelliJ Platform.
+- The **Terminal** plugin (bundled by default).
+- The **OpenCode CLI 2.x** installed and its background service running.
+
+---
+
+## Installation
+
+### From the JetBrains Marketplace (recommended)
+1. **Settings → Plugins → Marketplace**.
+2. Search for **OpenCode UI** and install.
+3. Restart the IDE.
+
+Marketplace page: <https://plugins.jetbrains.com/plugin/29744-opencode-ui>
+
+### From disk
+1. Download `OpenCode_UI_V2-2.0.0.zip` from the
+   [Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.
+2. **Settings → Plugins → ⚙️ → Install Plugin from Disk…** and pick the zip.
+3. Restart the IDE.
+
+### First run
+1. Click the **OpenCode** icon (or press `Ctrl+\`).
+   - The plugin reads `service.json`, connects to the running service, and opens
+     the TUI.
+2. Select code and press `Ctrl+Alt+K` to send context.
+3. When OpenCode edits files, the diff viewer opens with Accept / Reject.
+
+---
+
+## Keyboard shortcuts
+
+| Action | Shortcut |
+| --- | --- |
+| Open / focus the OpenCode panel | `Ctrl+\` (macOS `Cmd+Esc`) |
+| Send file / selection as context | `Ctrl+Alt+K` |
+| Interrupt the current turn | `Esc` (inside the panel) |
+| Code actions (Explain / Fix / …) | Right-click → **OpenCode** |
+
+---
+
+## Building from source
+
+Built with the **IntelliJ Platform Gradle Plugin 2.10.2** (JDK 17 target).
 
 ```powershell
 cd newplugin
@@ -42,47 +144,56 @@ $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.12"
 .\gradlew.bat buildPlugin
 ```
 
-Kết quả:
+Output:
 
-- `build\distributions\OpenCode_UI_V2-2.0.0.zip` ← file cài đặt (cấu trúc `OpenCode_UI_V2/lib/*.jar`)
+- `build\distributions\OpenCode_UI_V2-2.0.0.zip` — installable plugin
+  (structure: `OpenCode_UI_V2/lib/*.jar`)
 - `build\libs\OpenCode_UI_V2-2.0.0.jar`
 
-Bản build sẵn cũng có trong thư mục `dist/` của repo.
+Pre-built artifacts are attached to the
+[Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.
 
-## Cài đặt
+---
 
-1. IntelliJ: **File → Settings → Plugins → ⚙️ → Install Plugin from Disk…**
-2. Chọn `OpenCode_UI_V2-2.0.0.zip` (hoặc file trong `dist/`).
-3. **Restart IDE.**
-4. Bấm icon **OpenCode** (hoặc `Ctrl+\`):
-   - Plugin tự đọc `service.json` → kết nối service đang chạy → mở TUI.
-   - Chọn code → `Ctrl+Alt+K` để gửi context.
-   - Khi OpenCode sửa file, diff viewer mở ra với Accept/Reject.
-
-## Cấu trúc
+## Project structure
 
 ```
 src/main/java/ai/opencode/ide/jetbrains/
   api/        OpenCodeApiClient (java.net.http + Gson), OpenCodeEventStream (SSE)
-  patch/      UnifiedPatch   (reverse-apply unified diff → nội dung "before")
-  session/    SessionManager (snapshot file bị đổi trong turn), FileDiff, SessionInfo
+  patch/      UnifiedPatch   (reverse-apply unified diff -> "before" content)
+  session/    SessionManager (snapshots files changed in a turn), FileDiff, SessionInfo
   diff/       DiffViewerService, DiffHandler (Accept/Reject), ResolvedDiff
-  service/    OpenCodeService (kết nối, auto-reconnect, session tracking, terminal TUI)
-  ui/         OpenCodeToolWindowFactory (icon → mở terminal TUI)
-  terminal/   OpenCodeTerminalVirtualFile/FileEditor/Provider/LinkFilter/Listener
-  actions/    QuickLaunch, SendSelection, Interrupt, OpenDiffs
+  service/    OpenCodeService (connection, auto-reconnect, session tracking, TUI panel)
+  ui/         OpenCodeToolWindowFactory, OpenCodeStatusBarWidget(+Factory),
+              OpenCodeSettingsConfigurable, OpenCodeStartupActivity, OpenCodeConnectDialog
+  terminal/   OpenCodeTerminalLinkFilter (clickable @path links)
+  util/       ServerConnection, OpenCodeReference (@path#Lx-y builder)
+  actions/    QuickLaunch, SendSelection, NewSession, Interrupt, OpenDiffs,
+              CopyOutput, OpenCodeAsk, OpenCodeAskWithPrompt, OpenCodeActionsGroup
 src/main/resources/META-INF/plugin.xml, icons/opencode.svg
 ```
 
-## Ghi chú API 2.0.26 (đã xác minh trực tiếp trên server thật)
+---
 
-- Basic auth `opencode:<password>` (password từ `service.json`); thiếu auth → 401.
-- Envelope mọi endpoint `/api/*`: `{"data": {...}}`.
-- `POST /api/session/{id}/prompt` body `{"text": "..."}` (bắt buộc `text`),
-  response `data.id` = user message id.
+## API notes (2.0.26, verified against a live server)
+
+- Basic auth `opencode:<password>` (password from `service.json`); missing auth
+  → `401`.
+- Every `/api/*` endpoint wraps its payload in an envelope: `{"data": {...}}`.
+- `POST /api/session/{id}/prompt` body `{"text": "..."}` (the `text` field is
+  required); response `data.id` is the user message id.
 - `GET /api/session/{id}/diff?from=<userMsgId>` → `data[]`:
   `{file, patch, additions, deletions, status: added|deleted|modified}` —
-  KHÔNG còn `before/after` như v1 → viewer tự dựng "before" từ patch.
+  there is no `before/after` (unlike v1), so the viewer reconstructs "before"
+  from the patch.
 - `GET /api/session/active` → `{"data": {"ses_...": {"type":"running"}}}`.
-- SSE `/api/event`: `data: {"id":"evt_...","type":"session.tool.success","data":{...}}`;
-  luồng volatile → plugin tự reconnect và poll dự phòng.
+- SSE `/api/event`:
+  `data: {"id":"evt_...","type":"session.tool.success","data":{...}}` — the
+  stream is volatile, so the plugin reconnects and polls as a fallback.
+
+---
+
+## Links
+
+- **JetBrains Marketplace:** <https://plugins.jetbrains.com/plugin/29744-opencode-ui>
+- **OpenCode:** <https://opencode.ai>
