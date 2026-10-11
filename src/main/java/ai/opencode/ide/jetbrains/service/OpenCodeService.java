@@ -25,16 +25,16 @@ import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowManager;
+import com.intellij.terminal.JBTerminalPanel;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
 import com.intellij.ui.content.ContentManager;
 import com.intellij.util.concurrency.AppExecutorUtil;
+import com.jediterm.terminal.TerminalStarter;
 import org.jetbrains.plugins.terminal.ShellTerminalWidget;
 import org.jetbrains.plugins.terminal.TerminalView;
 
 import java.awt.BorderLayout;
-import java.awt.KeyEventDispatcher;
-import java.awt.KeyboardFocusManager;
 import java.awt.event.KeyEvent;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -48,7 +48,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.swing.JPanel;
-import javax.swing.SwingUtilities;
 
 /**
  * Central project service: discovers the OpenCode v2 background server, keeps an
@@ -89,7 +88,6 @@ public final class OpenCodeService implements Disposable {
     private volatile JPanel terminalPanel;
     private volatile String cachedBinary;
     private final AtomicBoolean terminalCommandStarted = new AtomicBoolean(false);
-    private java.awt.KeyEventDispatcher escDispatcher;
 
     private final ScheduledExecutorService poller;
 
@@ -288,11 +286,7 @@ public final class OpenCodeService implements Disposable {
             ShellTerminalWidget widget = TerminalView.getInstance(project)
                     .createLocalShellWidget(wd, "OpenCode");
             OpenCodeTerminalLinkFilter.install(project, widget);
-            // Intercept ESC when the terminal has focus: stop the current
-            // generation instead of jumping to the editor (IntelliJ's default).
-            // We use a KeyEventDispatcher because AnAction.registerCustomShortcutSet
-            // does not work when the actual focus is inside JediTerm's sub-components.
-            registerEscInterrupt(widget);
+            installEscIntercept(widget);
             JPanel panel = new JPanel(new BorderLayout());
             panel.add(widget.getComponent(), BorderLayout.CENTER);
             terminalWidget = widget;
@@ -333,26 +327,38 @@ public final class OpenCodeService implements Disposable {
         }
     }
 
-    /** Intercept ESC in the terminal widget to stop generation instead of jumping to editor. */
-    private void registerEscInterrupt(ShellTerminalWidget widget) {
-        // Remove previous dispatcher if any (e.g. re-created widget).
-        if (escDispatcher != null) {
-            KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(escDispatcher);
-        }
-        escDispatcher = e -> {
-            if (e.getID() == KeyEvent.KEY_PRESSED
-                    && e.getKeyCode() == KeyEvent.VK_ESCAPE
-                    && isBusy()) {
-                // Only intercept when the event target is inside the terminal widget.
-                if (SwingUtilities.isDescendingFrom(e.getComponent(), widget.getComponent())) {
-                    interrupt();
-                    e.consume();
-                    return true;
+    /**
+     * Make ESC in the OpenCode panel interrupt the running turn instead of letting
+     * IntelliJ move focus to the editor.
+     *
+     * <p>The terminal panel installs an internal escape listener
+     * ({@code com.intellij.terminal.TerminalEscapeKeyListener}) that consumes ESC and
+     * calls {@code ToolWindowManager.activateEditorComponent()} unless the terminal is
+     * using the alternate screen buffer. The OpenCode TUI renders inline, so that
+     * listener always stole ESC and jumped to the editor. We register a "pre key event"
+     * handler, which runs <em>before</em> that listener: consuming the event there stops
+     * IntelliJ from hijacking ESC, and we forward the raw ESC byte to the TUI so it runs
+     * its own {@code session.interrupt} binding. This does not depend on the plugin's
+     * (eventually consistent) session tracking.
+     */
+    private void installEscIntercept(ShellTerminalWidget widget) {
+        try {
+            JBTerminalPanel panel = widget.getTerminalPanel();
+            panel.addPreKeyEventHandler(e -> {
+                if (e.getID() != KeyEvent.KEY_PRESSED || e.getKeyCode() != KeyEvent.VK_ESCAPE) return;
+                // Stop IntelliJ's escape -> editor listener: it ignores consumed events.
+                e.consume();
+                // Forward the raw ESC byte so the TUI interrupts the running turn.
+                try {
+                    TerminalStarter starter = widget.getTerminalStarter();
+                    if (starter != null) starter.sendBytes(new byte[]{0x1b}, false);
+                } catch (Throwable t) {
+                    LOG.debug("Could not forward ESC to the OpenCode TUI", t);
                 }
-            }
-            return false;
-        };
-        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(escDispatcher);
+            });
+        } catch (Throwable t) {
+            LOG.warn("Could not install ESC intercept on the OpenCode terminal", t);
+        }
     }
 
     /** Launch {@code opencode} in the widget exactly once. */
@@ -733,14 +739,6 @@ public final class OpenCodeService implements Disposable {
         teardown();
         poller.shutdownNow();
         listeners.clear();
-        // Remove the ESC intercept dispatcher.
-        if (escDispatcher != null) {
-            try {
-                KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(escDispatcher);
-            } catch (Exception ignored) {
-            }
-            escDispatcher = null;
-        }
         // Dispose the terminal widget if still alive.
         ShellTerminalWidget w = terminalWidget;
         terminalWidget = null;
