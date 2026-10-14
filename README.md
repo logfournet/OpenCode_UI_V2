@@ -89,6 +89,36 @@ The panel's title bar provides quick actions:
 - **Settings → Tools → OpenCode**
   - Custom path to the `opencode` binary (blank = auto-detect).
   - Toggle auto-connect on project open.
+  - **Tab scope** — `Per project (cwd)` (default) keeps the TUI session tabs
+    per working directory; `Global (shared)` restores OpenCode v2's global tab
+    strip.
+
+### Per-project session tabs (tab leak fix)
+OpenCode v2 keeps its TUI tab strip in **one global client config**
+(`~/.config/opencode/cli.json`). Because the plugin hosts the TUI in a
+terminal, running it in two IDE windows at once (e.g. PyCharm and IntelliJ)
+made the tabs "jump" between them — both windows read/wrote the same global
+tab state and showed the same, overlapping tabs instead of each having its own.
+
+The plugin fixes this at launch time: it writes a small wrapper script
+(`~/.config/opencode/opencode-launch.cmd|.sh`) that exports
+
+```
+OPENCODE_CLI_CONFIG_CONTENT={"tabs":{"scope":"cwd"}}
+```
+
+so the TUI keeps its tabs per working directory. `OPENCODE_CLI_CONFIG_CONTENT`
+injects **only** CLI/UI settings and stays authoritative while set, so it does
+**not** relocate OpenCode's config directory — your `opencode.json`, agents,
+commands, plugins and credentials are untouched.
+
+This is the closest v2 equivalent of v1's per-project server isolation. Disable
+it (set **Tab scope** to `Global (shared)`) if you prefer the global OpenCode
+tab strip.
+
+> Note: two IDE windows open on the **same** directory still share one tab
+> strip (they resolve to the same `cwd`). That is OpenCode v2's `tabs.scope`
+> behaviour; use different checkouts/worktrees to get independent tabs.
 
 ---
 

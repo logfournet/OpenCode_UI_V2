@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>ai.opencode.ide.jetbrains</id>
     <name>OpenCode UI</name>
-    <version>2.0.0</version>
+    <version>2.0.1</version>
     <vendor url="https://opencode.ai">OpenCode</vendor>
 
     <description><![CDATA[
@@ -20,11 +20,22 @@
         <li>Native multi-file diff viewer with Accept / Reject when a turn ends.</li>
         <li>Status bar indicator + completion notification when the agent finishes.</li>
         <li>Tool window actions: New Session, Stop (ESC), Review Diffs.</li>
-        <li>Settings (Settings &gt; Tools &gt; OpenCode): custom binary path + auto-connect.</li>
+        <li>Per-project session tabs: sets the OpenCode v2 TUI
+            <code>tabs.scope=cwd</code> at launch so tabs no longer leak between
+            IDE windows (e.g. PyCharm &lt;-&gt; IntelliJ).</li>
+        <li>Settings (Settings &gt; Tools &gt; OpenCode): custom binary path,
+            auto-connect, and tab scope.</li>
       </ul>
     ]]></description>
 
     <change-notes><![CDATA[
+      <p>2.0.1 - Fix session tabs leaking between IDE windows. The OpenCode v2
+      TUI keeps its tab strip in the global <code>cli.json</code> client state,
+      so opening the panel in two IDEs (e.g. PyCharm and IntelliJ) showed the
+      same (overlapping) tabs. The plugin now launches the TUI through a small
+      wrapper that sets <code>OPENCODE_CLI_CONFIG_CONTENT</code> with
+      <code>tabs.scope=cwd</code>, so tabs are kept per project. New setting:
+      <b>Tab scope</b> (per project / global).</p>
       <p>2.0.0 - Rewritten for the OpenCode 2.x background service
       (<code>/api/*</code> HTTP surface + Basic Auth, auto-reconnect).
       OpenCode TUI now lives in a docked side panel so you can read the code

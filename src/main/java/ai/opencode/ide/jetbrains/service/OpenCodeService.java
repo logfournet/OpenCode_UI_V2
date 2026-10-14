@@ -11,6 +11,7 @@ import ai.opencode.ide.jetbrains.session.SessionInfo;
 import ai.opencode.ide.jetbrains.session.SessionManager;
 import ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalLinkFilter;
 import ai.opencode.ide.jetbrains.ui.OpenCodeConnectDialog;
+import ai.opencode.ide.jetbrains.ui.OpenCodeSettingsConfigurable;
 import ai.opencode.ide.jetbrains.util.ServerConnection;
 import com.google.gson.JsonObject;
 import com.intellij.notification.Notification;
@@ -41,6 +42,7 @@ import java.awt.BorderLayout;
 import java.awt.event.KeyEvent;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -502,15 +504,125 @@ public final class OpenCodeService implements Disposable {
      * old "server dead" problem. OpenCode v2 keeps sessions per working
      * directory, so launching the TUI in the project directory automatically
      * resumes that project's session.
+     *
+     * <p>OpenCode v2 also has a <em>global</em> TUI client config
+     * ({@code ~/.config/opencode/cli.json}) and a tab strip whose state is
+     * shared across every client on the machine. Because this plugin runs the
+     * TUI in a terminal, opening it in PyCharm and IntelliJ at the same time
+     * made session tabs "leak" between the two IDEs (both read/write the same
+     * global tab state). To keep tabs unique per project we launch the TUI
+     * through a small wrapper that sets {@code OPENCODE_CLI_CONFIG_CONTENT} so
+     * {@code tabs.scope} defaults to {@code cwd} (tabs kept per working
+     * directory) instead of shared globally.
+     *
+     * <p>{@code OPENCODE_CLI_CONFIG_CONTENT} is used because it injects
+     * <em>only</em> CLI/UI settings (merged over {@code cli.json}) and stays
+     * authoritative while set — it does not relocate the config directory, so
+     * the user's {@code opencode.json}, agents, commands, plugins and
+     * credentials keep working.
+     *
+     * <p>A wrapper script is used instead of prefixing env assignments onto the
+     * command because the IDE's terminal may be PowerShell, cmd.exe, bash or
+     * zsh, each with different env syntax. Running a script file works on all
+     * of them.
      */
     private String buildOpenCodeCommand() {
         String cmd = getOpenCodeBinary();
-        return cmd.contains(" ") ? "\"" + cmd + "\"" : cmd;
+
+        String scope = readSetting(OpenCodeSettingsConfigurable.TAB_SCOPE_KEY, "cwd");
+        if (!"global".equals(scope)) scope = "cwd";
+
+        try {
+            File script = writeLauncherScript(cmd, scope);
+            if (script != null) return quoteArg(script.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.warn("could not write OpenCode launcher script; falling back to plain launch", e);
+        }
+        // Fallback: launch the plain binary if the script could not be written.
+        return quoteArg(cmd);
+    }
+
+    private String quoteArg(String s) {
+        return s.contains(" ") ? "\"" + s + "\"" : s;
+    }
+
+    /**
+     * Write a platform-appropriate launcher script that overrides the OpenCode
+     * v2 TUI tab scope and then execs the OpenCode binary.
+     *
+     * <p>We deliberately use <b>only</b> {@code OPENCODE_CLI_CONFIG_CONTENT}
+     * (which injects just CLI/UI settings and stays authoritative while set)
+     * and never point {@code OPENCODE_CONFIG_DIR}/{@code XDG_CONFIG_HOME}
+     * elsewhere — that would relocate the whole config directory and hide the
+     * user's {@code opencode.json}, agents, commands, plugins and credentials.
+     */
+    private File writeLauncherScript(String binary, String scope) throws Exception {
+        String home = System.getProperty("user.home");
+        if (home == null || home.isBlank()) return null;
+        File dir = new File(home, ".config/opencode");
+        if (!dir.exists() && !dir.mkdirs()) return null;
+
+        String json = "{\"tabs\":{\"scope\":\"" + scope + "\"}}";
+
+        if (isWindows()) {
+            File script = new File(dir, "opencode-launch.cmd");
+            StringBuilder sb = new StringBuilder();
+            sb.append("@echo off\r\n");
+            sb.append("set \"OPENCODE_CLI_CONFIG_CONTENT=").append(json).append("\"\r\n");
+            sb.append(quoteArg(binary)).append("\r\n");
+            Files.write(script.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+            return script;
+        }
+        File script = new File(dir, "opencode-launch.sh");
+        StringBuilder sb = new StringBuilder();
+        sb.append("#!/bin/sh\n");
+        sb.append("OPENCODE_CLI_CONFIG_CONTENT=").append(shellQuote(json)).append("\n");
+        sb.append("export OPENCODE_CLI_CONFIG_CONTENT\n");
+        sb.append("exec ").append(shellQuote(binary)).append("\n");
+        Files.write(script.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+        script.setExecutable(true, false);
+        return script;
+    }
+
+    /** POSIX single-quote a value (safe for the JSON payload). */
+    private String shellQuote(String s) {
+        return "'" + s.replace("'", "'\\''") + "'";
+    }
+
+    private String readSetting(String key, String def) {
+        try {
+            String v = com.intellij.ide.util.PropertiesComponent.getInstance(project).getValue(key, def);
+            return v == null || v.isBlank() ? def : v;
+        } catch (Exception e) {
+            return def;
+        }
     }
 
     /** Forget the cached binary path (called after the setting changes). */
     public void resetCachedBinary() {
         cachedBinary = null;
+    }
+
+    /**
+     * Restart the TUI terminal so launch-time settings (tab scope / per-project
+     * isolation) take effect. Called after the settings page is applied.
+     */
+    public void restartTerminal() {
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (project.isDisposed()) return;
+            ShellTerminalWidget old = terminalWidget;
+            terminalWidget = null;
+            terminalPanel = null;
+            terminalCommandStarted.set(false);
+            terminalStartedAt = 0;
+            if (old != null) {
+                try {
+                    old.dispose();
+                } catch (Exception ignored) {
+                }
+            }
+            ensureTerminal();
+        });
     }
 
     /** Resolve the opencode CLI binary (cache result). */
