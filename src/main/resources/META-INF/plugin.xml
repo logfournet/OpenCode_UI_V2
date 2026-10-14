@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>ai.opencode.ide.jetbrains</id>
     <name>OpenCode UI</name>
-    <version>2.0.1</version>
+    <version>2.0.2</version>
     <vendor url="https://opencode.ai">OpenCode</vendor>
 
     <description><![CDATA[
@@ -29,6 +29,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+      <p>2.0.2 - Fix UI jank during long output. The plugin used to wipe the
+      whole terminal scrollback (<code>clearHistory</code>) every 2&nbsp;s once
+      the buffer crossed 5000 lines, which forced a full repaint and made the
+      panel stutter exactly when the agent produced a lot of output. JediTerm
+      already bounds the history buffer (auto-evicting old lines), so the
+      manual trim was both redundant and the cause of the jank; it has been
+      removed.</p>
       <p>2.0.1 - Fix session tabs leaking between IDE windows. The OpenCode v2
       TUI keeps its tab strip in the global <code>cli.json</code> client state,
       so opening the panel in two IDEs (e.g. PyCharm and IntelliJ) showed the

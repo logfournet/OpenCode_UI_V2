@@ -34,7 +34,6 @@ import com.intellij.ui.content.ContentFactory;
 import com.intellij.ui.content.ContentManager;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.jediterm.terminal.TerminalStarter;
-import com.jediterm.terminal.model.TerminalTextBuffer;
 import org.jetbrains.plugins.terminal.ShellTerminalWidget;
 import org.jetbrains.plugins.terminal.TerminalView;
 
@@ -63,9 +62,6 @@ import javax.swing.JPanel;
 public final class OpenCodeService implements Disposable {
 
     private static final Logger LOG = Logger.getInstance(OpenCodeService.class);
-
-    /** Maximum scrollback lines for terminal buffer to prevent excessive RAM usage. */
-    private static final int MAX_TERMINAL_LINES = 5000;
 
     private final Project project;
 
@@ -320,8 +316,6 @@ public final class OpenCodeService implements Disposable {
                     .createLocalShellWidget(wd, "OpenCode");
             OpenCodeTerminalLinkFilter.install(project, widget);
             installEscIntercept(widget);
-            // Giới hạn scrollback buffer để giảm tiêu thụ RAM
-            limitTerminalBuffer(widget);
             JPanel panel = new JPanel(new BorderLayout());
             panel.add(widget.getComponent(), BorderLayout.CENTER);
             installFileDrop(panel, widget);
@@ -338,23 +332,6 @@ public final class OpenCodeService implements Disposable {
             return null;
         }
         return terminalPanel;
-    }
-
-    /**
-     * Giới hạn số dòng lưu trong terminal scroll buffer để giảm tiêu thụ RAM.
-     * JediTerm tự động giới hạn history buffer ở 5000 dòng, nhưng scroll buffer
-     * riêng biệt có thể phình to. Phương thức này trim scroll buffer định kỳ.
-     */
-    private void limitTerminalBuffer(ShellTerminalWidget widget) {
-        try {
-            TerminalTextBuffer buffer = widget.getTerminalPanel().getTerminalTextBuffer();
-            if (buffer != null) {
-                int historyCount = buffer.getHistoryLinesCount();
-                LOG.info("Terminal buffer initialized: " + historyCount + " history lines (will auto-trim at " + MAX_TERMINAL_LINES + ")");
-            }
-        } catch (Throwable t) {
-            LOG.debug("Could not inspect terminal buffer", t);
-        }
     }
 
     /** Replace the placeholder tool window content with the live terminal panel. */
@@ -830,8 +807,6 @@ public final class OpenCodeService implements Disposable {
                 }
                 notifyChanged();
             }
-            // Trim terminal buffer to prevent excessive RAM from scrollback buildup
-            trimTerminalBuffer();
         } catch (Exception e) {
             // Server unreachable: count consecutive failures and reconnect silently
             // after a few, so a long running task / server restart does not leave
@@ -841,26 +816,6 @@ public final class OpenCodeService implements Disposable {
                 LOG.warn("[OpenCode] " + RECONNECT_AFTER_FAILURES + " consecutive poll failures - auto-reconnecting");
                 reconnectSilently();
             }
-        }
-    }
-
-    /**
-     * Trim terminal scrollback buffer nếu vượt quá giới hạn để giảm RAM.
-     * Gọi trong mỗi poll cycle (2 giây).
-     */
-    private void trimTerminalBuffer() {
-        try {
-            ShellTerminalWidget w = terminalWidget;
-            if (w == null) return;
-            TerminalTextBuffer buffer = w.getTerminalPanel().getTerminalTextBuffer();
-            if (buffer == null) return;
-            int count = buffer.getHistoryLinesCount();
-            if (count > MAX_TERMINAL_LINES) {
-                buffer.clearHistory();
-                LOG.debug("Terminal history trimmed: " + count + " lines cleared");
-            }
-        } catch (Throwable t) {
-            // Silent fail
         }
     }
 

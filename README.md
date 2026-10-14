@@ -120,6 +120,13 @@ tab strip.
 > strip (they resolve to the same `cwd`). That is OpenCode v2's `tabs.scope`
 > behaviour; use different checkouts/worktrees to get independent tabs.
 
+### RAM usage
+JediTerm keeps a bounded terminal history buffer (5000 lines) and
+automatically evicts the oldest lines, so the panel does not grow without
+bound even during very long sessions. Earlier versions additionally wiped the
+entire scrollback every couple of seconds, which caused visible stutter while
+the agent produced a lot of output; that has been removed in 2.0.2.
+
 ---
 
 ## Requirements
