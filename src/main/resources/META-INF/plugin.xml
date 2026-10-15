@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>ai.opencode.ide.jetbrains</id>
     <name>OpenCode UI</name>
-    <version>2.0.2</version>
+    <version>2.0.3</version>
     <vendor url="https://opencode.ai">OpenCode</vendor>
 
     <description><![CDATA[
@@ -24,11 +24,18 @@
             <code>tabs.scope=cwd</code> at launch so tabs no longer leak between
             IDE windows (e.g. PyCharm &lt;-&gt; IntelliJ).</li>
         <li>Settings (Settings &gt; Tools &gt; OpenCode): custom binary path,
-            auto-connect, and tab scope.</li>
+            auto-connect, tab scope, and terminal scrollback (unlimited by
+            default).</li>
       </ul>
     ]]></description>
 
     <change-notes><![CDATA[
+      <p>2.0.3 - No line limit. The terminal history was capped at the IDE default
+      of 5000 lines; a new <b>Terminal scrollback</b> setting removes the cap
+      (<code>terminal.buffer.max.lines.count</code>) so long agent output is
+      never trimmed and can still be scrolled back. It is unbounded by default;
+      untick <b>Unlimited</b> to impose a finite cap. The buffer only grows with
+      real output and never pre-allocates, so no RAM is reserved up front.</p>
       <p>2.0.2 - Fix UI jank during long output. The plugin used to wipe the
       whole terminal scrollback (<code>clearHistory</code>) every 2&nbsp;s once
       the buffer crossed 5000 lines, which forced a full repaint and made the

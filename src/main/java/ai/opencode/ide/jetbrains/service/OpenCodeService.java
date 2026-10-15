@@ -23,6 +23,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -80,6 +81,20 @@ public final class OpenCodeService implements Disposable {
     private volatile int consecutiveFailures;
     private static final int RECONNECT_AFTER_FAILURES = 3;
     private static final long RECONNECT_BACKOFF_MS = 5000;
+
+    /**
+     * IDE advanced setting that caps the terminal scrollback history
+     * ({@code JBTerminalSystemSettingsProviderBase.getBufferMaxLinesCount()} reads
+     * it and {@code TerminalTextBuffer} uses it as its {@code maxHistoryLinesCount};
+     * JetBrains' default is 5000 lines).
+     *
+     * <p>The plugin drives it from the {@code opencode.terminalBufferLines} setting
+     * so long agent output is no longer trimmed; by default the limit is removed
+     * (the history storage only evicts once the count exceeds the cap and never
+     * pre-allocates, so nothing is reserved up front). The key is shared with every
+     * terminal in the IDE, so the value applies to all terminal tabs.
+     */
+    private static final String TERMINAL_MAX_LINES_KEY = "terminal.buffer.max.lines.count";
 
     private volatile String sessionId;
     private volatile String lastUserMsgId;
@@ -311,6 +326,9 @@ public final class OpenCodeService implements Disposable {
     public synchronized JPanel ensureTerminal() {
         if (terminalWidget != null && terminalPanel != null) return terminalPanel;
         try {
+            // The scrollback cap is read once, when the terminal session's buffer
+            // is created, so it must be applied before the widget is created.
+            applyTerminalScrollback();
             String wd = project.getBasePath();
             ShellTerminalWidget widget = TerminalView.getInstance(project)
                     .createLocalShellWidget(wd, "OpenCode");
@@ -572,6 +590,41 @@ public final class OpenCodeService implements Disposable {
             return v == null || v.isBlank() ? def : v;
         } catch (Exception e) {
             return def;
+        }
+    }
+
+    private int readIntSetting(String key, int def) {
+        try {
+            return com.intellij.ide.util.PropertiesComponent.getInstance(project).getInt(key, def);
+        } catch (Exception e) {
+            return def;
+        }
+    }
+
+    /**
+     * Apply the configured terminal scrollback size to the IDE's advanced setting
+     * {@code terminal.buffer.max.lines.count}.
+     *
+     * <p>The OpenCode TUI renders inside a standard IDE terminal, whose history is
+     * capped by that key (JetBrains' default is 5000 lines). The plugin used to
+     * trim the buffer itself to save RAM; that is gone, and by default the cap is
+     * removed entirely so nothing is dropped. The history storage only evicts once
+     * the line count exceeds the cap and never pre-allocates, so an "unlimited"
+     * value costs nothing until the lines are really produced.
+     *
+     * <p>The value is read at terminal-creation time, hence this is called right
+     * before the widget is built and the terminal is restarted after a change.
+     */
+    private void applyTerminalScrollback() {
+        try {
+            int lines = readIntSetting(OpenCodeSettingsConfigurable.TERMINAL_BUFFER_KEY,
+                    OpenCodeSettingsConfigurable.DEFAULT_TERMINAL_BUFFER_LINES);
+            // 0 = no line limit: use the largest cap JetBrains accepts. The buffer
+            // would be exhausted long before reaching it, i.e. effectively unbounded.
+            if (lines <= 0) lines = Integer.MAX_VALUE;
+            AdvancedSettings.getInstance().setInt(TERMINAL_MAX_LINES_KEY, lines);
+        } catch (Throwable t) {
+            LOG.debug("could not apply terminal scrollback setting", t);
         }
     }
 

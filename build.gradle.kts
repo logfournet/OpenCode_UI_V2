@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "ai.opencode"
-version = "2.0.2"
+version = "2.0.3"
 
 repositories {
     mavenCentral()
@@ -34,6 +34,23 @@ intellijPlatform {
         }
 
         changeNotes = """
+            <h2>2.0.3</h2>
+            <ul>
+                <li>No line limit: the terminal scrollback is unbounded by default
+                    (<code>terminal.buffer.max.lines.count</code>); a
+                    <b>Terminal scrollback</b> setting can impose a finite cap.</li>
+            </ul>
+            <h2>2.0.2</h2>
+            <ul>
+                <li>Fix UI jank on long output (removed the destructive
+                    <code>clearHistory</code> trim).</li>
+            </ul>
+            <h2>2.0.1</h2>
+            <ul>
+                <li>Keep OpenCode v2 TUI session tabs per project
+                    (<code>tabs.scope=cwd</code>) so they no longer leak between
+                    IDE windows.</li>
+            </ul>
             <h2>2.0.0</h2>
             <ul>
                 <li>Rewritten for the OpenCode 2.x background service

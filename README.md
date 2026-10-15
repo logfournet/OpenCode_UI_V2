@@ -92,6 +92,10 @@ The panel's title bar provides quick actions:
   - **Tab scope** — `Per project (cwd)` (default) keeps the TUI session tabs
     per working directory; `Global (shared)` restores OpenCode v2's global tab
     strip.
+  - **Terminal scrollback** — keeps the whole terminal history by default
+    (**Unlimited**, no line limit). Untick *Unlimited* to impose a finite cap
+    (e.g. `100000` lines). Applied to the IDE setting
+    `terminal.buffer.max.lines.count` (shared by all IDE terminals).
 
 ### Per-project session tabs (tab leak fix)
 OpenCode v2 keeps its TUI tab strip in **one global client config**
@@ -120,12 +124,22 @@ tab strip.
 > strip (they resolve to the same `cwd`). That is OpenCode v2's `tabs.scope`
 > behaviour; use different checkouts/worktrees to get independent tabs.
 
-### RAM usage
-JediTerm keeps a bounded terminal history buffer (5000 lines) and
-automatically evicts the oldest lines, so the panel does not grow without
-bound even during very long sessions. Earlier versions additionally wiped the
-entire scrollback every couple of seconds, which caused visible stutter while
-the agent produced a lot of output; that has been removed in 2.0.2.
+### RAM usage & scrollback
+JediTerm keeps a terminal history buffer that is capped by the IDE advanced
+setting `terminal.buffer.max.lines.count` (JetBrains' default: 5000 lines) and
+automatically evicts the oldest lines once the cap is reached. Earlier plugin
+versions additionally wiped the entire scrollback every couple of seconds,
+which caused visible stutter while the agent produced a lot of output; that was
+removed in **2.0.2**.
+
+From **2.0.3** there is **no line limit by default**: the **Terminal
+scrollback** setting removes the cap
+(`terminal.buffer.max.lines.count`) before the TUI terminal is created, so long
+agent output is kept and can still be scrolled back. The history is backed by a
+dynamic deque that only grows with the lines that are actually produced and
+never pre-allocates, so keeping everything costs nothing until the output is
+really there. If you want a bound again, untick **Unlimited** and set a finite
+value (e.g. `5000`).
 
 ---
 
@@ -148,7 +162,7 @@ the agent produced a lot of output; that has been removed in 2.0.2.
 Marketplace page: <https://plugins.jetbrains.com/plugin/29744-opencode-ui>
 
 ### From disk
-1. Download `OpenCode_UI_V2-2.0.0.zip` from the
+1. Download `OpenCode_UI_V2-2.0.3.zip` from the
    [Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.
 2. **Settings → Plugins → ⚙️ → Install Plugin from Disk…** and pick the zip.
 3. Restart the IDE.
@@ -185,9 +199,9 @@ $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.12"
 
 Output:
 
-- `build\distributions\OpenCode_UI_V2-2.0.0.zip` — installable plugin
+- `build\distributions\OpenCode_UI_V2-2.0.3.zip` — installable plugin
   (structure: `OpenCode_UI_V2/lib/*.jar`)
-- `build\libs\OpenCode_UI_V2-2.0.0.jar`
+- `build\libs\OpenCode_UI_V2-2.0.3.jar`
 
 Pre-built artifacts are attached to the
 [Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.
