@@ -6,6 +6,7 @@ import ai.opencode.ide.jetbrains.actions.NewSessionAction;
 import ai.opencode.ide.jetbrains.actions.OpenDiffsAction;
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
 import com.intellij.openapi.components.ServiceManager;
+import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowFactory;
@@ -25,7 +26,7 @@ import java.util.List;
  * this factory only makes sure it exists when the tool window is first shown,
  * and adds quick actions (interrupt / review diffs) to the window title bar.
  */
-public final class OpenCodeToolWindowFactory implements ToolWindowFactory {
+public final class OpenCodeToolWindowFactory implements ToolWindowFactory, DumbAware {
 
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {

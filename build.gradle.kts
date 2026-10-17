@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "ai.opencode"
-version = "2.0.4"
+version = "2.0.5"
 
 repositories {
     mavenCentral()
@@ -34,6 +34,13 @@ intellijPlatform {
         }
 
         changeNotes = """
+            <h2>2.0.5</h2>
+            <ul>
+                <li>Fix the panel being replaced by "This view is not available until
+                    indexes are built" while the project is indexing. The tool window
+                    factory is now <code>DumbAware</code>, so the OpenCode terminal
+                    stays available in dumb mode.</li>
+            </ul>
             <h2>2.0.4</h2>
             <ul>
                 <li>Fix the OpenCode panel showing up and then going blank in newer
