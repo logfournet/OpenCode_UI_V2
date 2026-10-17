@@ -30,7 +30,7 @@ public final class OpenCodeToolWindowFactory implements ToolWindowFactory {
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
         OpenCodeService svc = ServiceManager.getService(project, OpenCodeService.class);
-        svc.ensureTerminal();
+        svc.ensureTerminal(toolWindow);
         // Quick actions in the tool window title bar.
         toolWindow.setTitleActions(List.of(
                 new NewSessionAction(),

@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "ai.opencode"
-version = "2.0.3"
+version = "2.0.4"
 
 repositories {
     mavenCentral()
@@ -34,6 +34,14 @@ intellijPlatform {
         }
 
         changeNotes = """
+            <h2>2.0.4</h2>
+            <ul>
+                <li>Fix the OpenCode panel showing up and then going blank in newer
+                    platform builds (e.g. PhpStorm 2026.2.x). The terminal widget is
+                    no longer re-parented out of the Terminal tool window; the
+                    terminal Content is moved into the OpenCode tool window instead,
+                    and the widget is created without stealing focus.</li>
+            </ul>
             <h2>2.0.3</h2>
             <ul>
                 <li>No line limit: the terminal scrollback is unbounded by default

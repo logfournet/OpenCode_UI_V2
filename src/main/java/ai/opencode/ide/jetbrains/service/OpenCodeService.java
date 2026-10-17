@@ -324,22 +324,59 @@ public final class OpenCodeService implements Disposable {
      * factory / {@link #focusOrCreateTerminal()} on the EDT.
      */
     public synchronized JPanel ensureTerminal() {
-        if (terminalWidget != null && terminalPanel != null) return terminalPanel;
+        return ensureTerminal(getToolWindow());
+    }
+
+    /**
+     * Return (creating if needed) the JPanel hosting the OpenCode TUI and make sure
+     * it is the content of the given tool window.
+     *
+     * <p>In recent platform builds {@code TerminalView.createLocalShellWidget} no
+     * longer returns a detached widget: it appends a tab to the global
+     * <em>Terminal</em> tool window (and, when asked to focus, activates that tool
+     * window). Re-parenting {@code widget.getComponent()} into our own panel then
+     * left an empty tab in the Terminal window and let it steal the component back,
+     * so the OpenCode panel appeared and immediately went blank. We instead move the
+     * terminal's {@link Content} itself into the OpenCode tool window, which keeps
+     * the widget (and its wrapper panel) owned by a single ContentManager.
+     */
+    public synchronized JPanel ensureTerminal(ToolWindow toolWindow) {
+        ToolWindow tw = toolWindow != null ? toolWindow : getToolWindow();
+        if (terminalWidget != null && terminalPanel != null) {
+            attachPanel(tw, terminalPanel);
+            return terminalPanel;
+        }
         try {
             // The scrollback cap is read once, when the terminal session's buffer
             // is created, so it must be applied before the widget is created.
             applyTerminalScrollback();
             String wd = project.getBasePath();
+            // requestFocus=false: do NOT activate the global Terminal tool window.
             ShellTerminalWidget widget = TerminalView.getInstance(project)
-                    .createLocalShellWidget(wd, "OpenCode");
+                    .createLocalShellWidget(wd, "OpenCode", false, true);
             OpenCodeTerminalLinkFilter.install(project, widget);
             installEscIntercept(widget);
-            JPanel panel = new JPanel(new BorderLayout());
-            panel.add(widget.getComponent(), BorderLayout.CENTER);
+
+            JPanel panel = null;
+            Content moved = moveTerminalContentInto(tw, widget);
+            if (moved != null) {
+                java.awt.Component comp = moved.getComponent();
+                if (comp instanceof JPanel) {
+                    panel = (JPanel) comp;
+                } else if (comp != null) {
+                    panel = new JPanel(new BorderLayout());
+                    panel.add(comp, BorderLayout.CENTER);
+                }
+            }
+            if (panel == null) {
+                // Older platform: createLocalShellWidget returns a detached widget.
+                panel = new JPanel(new BorderLayout());
+                panel.add(widget.getComponent(), BorderLayout.CENTER);
+                attachPanel(tw, panel);
+            }
             installFileDrop(panel, widget);
             terminalWidget = widget;
             terminalPanel = panel;
-            attachTerminalContent(panel);
             // Defer the command so the widget is attached to a visible component first.
             ApplicationManager.getApplication().invokeLater(this::startTerminalCommandIfNeeded);
             LOG.info("OpenCode terminal panel created");
@@ -352,12 +389,47 @@ public final class OpenCodeService implements Disposable {
         return terminalPanel;
     }
 
-    /** Replace the placeholder tool window content with the live terminal panel. */
-    private void attachTerminalContent(JPanel panel) {
+    /**
+     * Move the {@link Content} that hosts {@code widget} from the global Terminal
+     * tool window into {@code target}. Returns the moved content, or {@code null}
+     * when the widget is not hosted in a Content (older platform API).
+     */
+    private Content moveTerminalContentInto(ToolWindow target, ShellTerminalWidget widget) {
+        if (target == null) return null;
         try {
-            ToolWindow tw = getToolWindow();
+            ToolWindow terminalTw = ToolWindowManager.getInstance(project).getToolWindow("Terminal");
+            if (terminalTw == null) return null;
+            java.awt.Component widgetComponent = widget.getComponent();
+            if (widgetComponent == null) return null;
+            ContentManager terminalCm = terminalTw.getContentManager();
+            for (Content c : terminalCm.getContents()) {
+                java.awt.Component host = c.getComponent();
+                if (host != null && javax.swing.SwingUtilities.isDescendingFrom(widgetComponent, host)) {
+                    ContentManager targetCm = target.getContentManager();
+                    for (Content old : targetCm.getContents()) targetCm.removeContent(old, true);
+                    // Detach without disposing the widget, then attach to our tool window.
+                    terminalCm.removeContent(c, false);
+                    targetCm.addContent(c);
+                    targetCm.setSelectedContent(c, false);
+                    LOG.info("Moved OpenCode terminal content into the OpenCode tool window");
+                    return c;
+                }
+            }
+        } catch (Throwable t) {
+            LOG.warn("Could not relocate terminal content", t);
+        }
+        return null;
+    }
+
+    /** Make sure the given panel is the content of the tool window (idempotent). */
+    private void attachPanel(ToolWindow tw, JPanel panel) {
+        try {
+            if (tw == null) tw = getToolWindow();
             if (tw == null) return;
             ContentManager cm = tw.getContentManager();
+            for (Content c : cm.getContents()) {
+                if (c.getComponent() == panel) return; // already attached
+            }
             for (Content c : cm.getContents()) cm.removeContent(c, true);
             cm.addContent(ContentFactory.getInstance().createContent(panel, "", false));
         } catch (Exception e) {
