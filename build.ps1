@@ -1,72 +1,114 @@
+param(
+    [string]$IdePath,
+    [switch]$Install,
+    [switch]$NoClean
+)
+
 # Build script for the OpenCode UI plugin (Java, no Gradle).
-# Compiles with javac against the installed IntelliJ platform jars and packages
-# a "Install Plugin from Disk" zip.
+# Compiles with javac against the jars of an installed JetBrains IDE and packages
+# an "Install Plugin from Disk" zip (structure: OpenCode_UI_V2/lib/*.jar).
+#
+# Usage:
+#   .\build.ps1                      # auto-detect the IDE, build
+#   .\build.ps1 -IdePath "C:\...\PyCharm"
+#   .\build.ps1 -Install             # also copy into the IDE's plugins dir
 
 $ErrorActionPreference = "Stop"
+$root = $PSScriptRoot
+$version = "2.0.5"
+$name = "OpenCode_UI_V2"
 
-$root = "C:\Users\sfclog\AppData\Local\Temp\opencode\newplugin"
-$jdk = "C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot\bin"
-$idea = "C:\Users\sfclog\AppData\Local\Programs\IntelliJ IDEA"
-$tmp  = "C:\Users\sfclog\AppData\Local\Temp\opencode"
-
-$src      = Join-Path $root "src\main\java"
-$out      = Join-Path $root "build"
-$classes  = Join-Path $out "classes"
-$dist     = Join-Path $out "dist"
-$jarName  = "OpenCode_UI-2.0.0.jar"
-$zipName  = "OpenCode_UI-2.0.0.zip"
-
-if (Test-Path $out) { Remove-Item $out -Recurse -Force }
-New-Item -ItemType Directory -Path $classes -Force | Out-Null
-New-Item -ItemType Directory -Path $dist -Force | Out-Null
-
-# --- classpath ----------------------------------------------------------
-$cp = @()
-foreach ($list in @((Join-Path $tmp "ide-lib-jars.txt"), (Join-Path $tmp "ide-terminal-jars.txt"))) {
-    if (Test-Path $list) {
-        $cp += Get-Content $list | Where-Object { $_ -and (Test-Path $_) }
+function Find-Ide {
+    $candidates = @(
+        (Join-Path $env:LOCALAPPDATA "Programs\PyCharm"),
+        (Join-Path $env:LOCALAPPDATA "Programs\IntelliJ IDEA"),
+        (Join-Path $env:LOCALAPPDATA "Programs\IntelliJ IDEA Community Edition"),
+        (Join-Path $env:LOCALAPPDATA "JetBrains\Toolbox\apps")
+    )
+    foreach ($c in $candidates) {
+        if ($c -and (Test-Path (Join-Path $c "lib"))) { return $c }
     }
+    throw "Could not auto-detect an IntelliJ-based IDE. Pass -IdePath."
 }
 
-# --- javac (response file avoids command-line length limits) -----------
-$files = Get-ChildItem $src -Recurse -Filter *.java | ForEach-Object { $_.FullName }
-$argsFile = Join-Path $out "javac.args"
+if (-not $IdePath) { $IdePath = Find-Ide }
+
+$javac = Join-Path $IdePath "jbr\bin\javac.exe"
+if (-not (Test-Path $javac)) { throw "javac not found at $javac" }
+
+Write-Host "IDE:        $IdePath"
+Write-Host "javac:      $javac"
+& $javac -version
+
+$out = Join-Path $root "build\classes"
+$pluginDir = Join-Path $root "build\plugin\$name"
+$libDir = Join-Path $pluginDir "lib"
+$jarPath = Join-Path $libDir "$name-$version.jar"
+
+if (-not $NoClean) {
+    if (Test-Path (Join-Path $root "build")) { Remove-Item (Join-Path $root "build") -Recurse -Force }
+}
+New-Item -ItemType Directory -Path $out -Force | Out-Null
+New-Item -ItemType Directory -Path $libDir -Force | Out-Null
+
+# Classpath: the IDE itself + the terminal plugin it bundles.
+$cp = @()
+$cp += (Get-ChildItem (Join-Path $IdePath "lib\*.jar") | ForEach-Object { $_.FullName })
+foreach ($p in @("plugins\terminal\lib", "plugins\platform-images\lib")) {
+    $dir = Join-Path $IdePath $p
+    if (Test-Path $dir) { $cp += (Get-ChildItem "$dir\*.jar" | ForEach-Object { $_.FullName }) }
+}
+$cpString = ($cp -join ";")
+
+$sources = Get-ChildItem (Join-Path $root "src\main\java") -Recurse -Filter *.java | ForEach-Object { $_.FullName }
+Write-Host "Compiling $($sources.Count) sources..."
+
+$argFile = Join-Path $root "build\javac.args"
 $lines = New-Object System.Collections.Generic.List[string]
-$lines.Add('-encoding UTF-8')
-$lines.Add('-proc:none')
-$lines.Add('--release 17')
-$lines.Add('-d')
-$lines.Add(($classes -replace '\\', '/'))
-$lines.Add('-cp')
-$lines.Add('"' + (($cp | ForEach-Object { $_ -replace '\\', '/' }) -join ';') + '"')
-foreach ($f in $files) { $lines.Add('"' + ($f -replace '\\', '/') + '"') }
-[IO.File]::WriteAllLines($argsFile, $lines, [System.Text.UTF8Encoding]::new($false))
+$lines.Add("-d `"$($out.Replace('\','/'))`"")
+$lines.Add("-encoding UTF-8")
+$lines.Add("-nowarn")
+$lines.Add("-classpath `"$($cpString.Replace('\','/'))`"")
+foreach ($s in $sources) { $lines.Add("`"$($s.Replace('\','/'))`"") }
+[IO.File]::WriteAllLines($argFile, $lines, [System.Text.UTF8Encoding]::new($false))
 
-Write-Host "Compiling $(@($files).Count) sources with javac..."
-& (Join-Path $jdk "javac.exe") "@$argsFile"
-if ($LASTEXITCODE -ne 0) { throw "javac failed" }
+& $javac "@$argFile"
+if ($LASTEXITCODE -ne 0) { throw "Compilation failed ($LASTEXITCODE)" }
+Write-Host "Compiled OK" -ForegroundColor Green
 
-# --- resources -----------------------------------------------------------
-$resources = Join-Path $src "..\resources"
-New-Item -ItemType Directory -Path (Join-Path $classes "META-INF") -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $classes "icons") -Force | Out-Null
-Copy-Item (Join-Path $resources "META-INF\plugin.xml") (Join-Path $classes "META-INF\plugin.xml") -Force
-Copy-Item (Join-Path $resources "icons\opencode.svg")  (Join-Path $classes "icons\opencode.svg") -Force
+# Resources
+Copy-Item (Join-Path $root "src\main\resources\*") $out -Recurse -Force
 
-# --- jar ------------------------------------------------------------------
-Push-Location $classes
-& (Join-Path $jdk "jar.exe") cf (Join-Path $dist $jarName) .
-if ($LASTEXITCODE -ne 0) { throw "jar failed" }
-Pop-Location
+# Package the jar (JBR has no jar.exe: build it with .NET)
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+Add-Type -AssemblyName System.IO.Compression
+if (Test-Path $jarPath) { Remove-Item $jarPath -Force }
+$zip = [System.IO.Compression.ZipFile]::Open($jarPath, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    Get-ChildItem $out -Recurse -File | ForEach-Object {
+        $rel = $_.FullName.Substring($out.Length + 1).Replace('\', '/')
+        [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_.FullName, $rel)
+    }
+} finally {
+    $zip.Dispose()
+}
+Write-Host "Jar: $jarPath" -ForegroundColor Green
 
-# --- zip ------------------------------------------------------------------
-$zip = Join-Path $out $zipName
-Compress-Archive -Path (Join-Path $dist "*") -DestinationPath $zip -Force
+# Plugin zip (JetBrains layout: <name>/lib/*.jar)
+$dist = Join-Path $root "build\distributions"
+New-Item -ItemType Directory -Path $dist -Force | Out-Null
+$zipPath = Join-Path $dist "$name-$version.zip"
+if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+Compress-Archive -Path $pluginDir -DestinationPath $zipPath -Force
+Write-Host "Zip: $zipPath" -ForegroundColor Green
 
-Write-Host ""
-Write-Host "BUILD OK"
-Write-Host "  plugin jar: $dist\$jarName"
-Write-Host "  install zip: $zip"
-Write-Host ""
-Write-Host "Install via File > Settings > Plugins > Gear > Install Plugin from Disk,"
-Write-Host "then restart. Ctrl+` opens the OpenCode panel."
+if ($Install) {
+    $productInfo = Get-Content (Join-Path $IdePath "product-info.json") -Raw | ConvertFrom-Json
+    $pluginsRoot = Join-Path $env:APPDATA "JetBrains\$($productInfo.dataDirectoryName)\plugins"
+    New-Item -ItemType Directory -Path $pluginsRoot -Force | Out-Null
+    $target = Join-Path $pluginsRoot $name
+    if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+    Copy-Item $pluginDir $target -Recurse -Force
+    Write-Host "Installed to: $target" -ForegroundColor Cyan
+    Write-Host "Restart the IDE to load the plugin." -ForegroundColor Yellow
+}
