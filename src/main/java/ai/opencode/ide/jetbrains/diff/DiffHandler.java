@@ -48,15 +48,31 @@ public final class DiffHandler {
     }
 
     private void gitAdd(String path) {
+        // Only touch git when the project actually uses it: running `git add`
+        // in a non-git project would fail (or worse, create a stray repo).
+        if (!isGitProject()) return;
         try {
             String base = project.getBasePath();
-            ProcessBuilder pb = new ProcessBuilder("git", "add", path);
+            ProcessBuilder pb = new ProcessBuilder("git", "add", "--", path);
             if (base != null) pb.directory(new File(base));
             pb.redirectErrorStream(true);
             Process p = pb.start();
             if (!p.waitFor(5, TimeUnit.SECONDS)) p.destroyForcibly();
         } catch (Exception e) {
             LOG.debug("git add failed: " + path, e);
+        }
+    }
+
+    /** True only when the project actually has a git repository (no VCS plugin dependency needed). */
+    private boolean isGitProject() {
+        try {
+            String base = project.getBasePath();
+            if (base == null) return false;
+            // `.git` is a directory in a normal clone and a file in a worktree/submodule.
+            return new File(base, ".git").exists();
+        } catch (Exception e) {
+            LOG.debug("git detection failed", e);
+            return false;
         }
     }
 

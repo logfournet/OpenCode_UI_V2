@@ -1,5 +1,7 @@
 package ai.opencode.ide.jetbrains.session;
 
+import com.intellij.history.LocalHistory;
+import com.intellij.history.LocalHistoryAction;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
@@ -28,11 +30,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * Captures the original content of every file OpenCode touches so the
  * "before" side of the diff is reliable, and detects user edits so we can
  * warn before overwriting them on Reject.
+ *
+ * <p>Each turn is also recorded in the IDE's built-in Local History (no VCS
+ * required): a "before" label at turn start and an "after" label at turn end,
+ * so the user can roll back with right-click → Local History → Show History
+ * even after the in-memory snapshot is gone.</p>
  */
 @Service(Service.Level.PROJECT)
 public final class SessionManager implements Disposable {
 
     private static final Logger LOG = Logger.getInstance(SessionManager.class);
+
+    /** Label placed in Local History before the agent starts writing. */
+    public static final String LABEL_TURN_START = "OpenCode turn start";
+    /** Label placed in Local History once the agent finished the turn. */
+    public static final String LABEL_TURN_END = "OpenCode turn finished";
 
     private final Project project;
 
@@ -94,12 +106,45 @@ public final class SessionManager implements Disposable {
         capturedBefore.clear();
         userEdited.clear();
         aiCreated.clear();
+        beginLocalHistoryTurn();
         return true;
     }
 
     /** Call when the session becomes idle. */
     public void onTurnEnd() {
         turnActive = false;
+        endLocalHistoryTurn();
+    }
+
+    // ------------------------------------------------------------------
+    // Local History integration (no VCS needed — right-click → Local History)
+    // ------------------------------------------------------------------
+
+    /**
+     * Marks the pre-turn state in the IDE's built-in Local History so the user
+     * can roll back to "before this AI turn" later (right-click → Local
+     * History → Show History), even after the in-memory snapshot is cleared.
+     */
+    public void beginLocalHistoryTurn() {
+        try {
+            if (project.isDisposed()) return;
+            LocalHistory.getInstance().putSystemLabel(project, LABEL_TURN_START);
+        } catch (Exception e) {
+            LOG.debug("local history label (start) failed", e);
+        }
+    }
+
+    /**
+     * Marks the post-turn state so every agent change is one named entry in
+     * Local History ({@value #LABEL_TURN_END}).
+     */
+    public void endLocalHistoryTurn() {
+        try {
+            if (project.isDisposed()) return;
+            LocalHistory.getInstance().putSystemLabel(project, LABEL_TURN_END);
+        } catch (Exception e) {
+            LOG.debug("local history label (end) failed", e);
+        }
     }
 
     private boolean isUserCommand() {

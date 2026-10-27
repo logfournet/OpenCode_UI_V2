@@ -927,7 +927,12 @@ public final class OpenCodeService implements Disposable {
                 if (running) {
                     lastUserMsgId = null;
                 } else if (was) {
-                    // Turn just finished -> fetch diffs and notify the user.
+                    // Turn just finished -> record it in Local History, then fetch diffs.
+                    try {
+                        SessionManager sm = ServiceManager.getService(project, SessionManager.class);
+                        if (sm != null) sm.onTurnEnd();
+                    } catch (Exception ignored) {
+                    }
                     refreshDiffs(true);
                 }
                 notifyChanged();
@@ -997,6 +1002,11 @@ public final class OpenCodeService implements Disposable {
                 lastUserMsgId = msgId;
                 turnActive = true;
                 notifyChanged();
+                try {
+                    SessionManager sm = ServiceManager.getService(project, SessionManager.class);
+                    if (sm != null) sm.onTurnStart();
+                } catch (Exception ignored) {
+                }
             } else {
                 notify("OpenCode", "Prompt was not accepted by the server.", NotificationType.ERROR);
             }
