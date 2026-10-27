@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>ai.opencode.ide.jetbrains</id>
     <name>OpenCode UI</name>
-    <version>2.0.5</version>
+    <version>2.0.6</version>
     <vendor url="https://opencode.ai">OpenCode</vendor>
 
     <description><![CDATA[
@@ -30,6 +30,14 @@
     ]]></description>
 
     <change-notes><![CDATA[
+      <p>2.0.6 - Rollback without git. Every OpenCode turn is now recorded in
+      the IDE's built-in <b>Local History</b> (right-click a file → Local History
+      → Show History): the plugin puts an <code>OpenCode turn start</code> label
+      before the agent edits anything and an <code>OpenCode turn finished</code>
+      label when the turn ends, so you can always revert a class/file to the
+      state it had before the AI touched it — no VCS, no guesswork. The diff
+      viewer's <b>Accept</b> no longer runs <code>git add</code> unless the
+      project actually has a git repo.</p>
       <p>2.0.5 - Fix the panel being replaced by "This view is not available until
       indexes are built" while the project indexes. The OpenCode tool window
       factory is now <code>DumbAware</code>, so the terminal stays available in

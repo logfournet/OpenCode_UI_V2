@@ -162,7 +162,7 @@ value (e.g. `5000`).
 Marketplace page: <https://plugins.jetbrains.com/plugin/29744-opencode-ui>
 
 ### From disk
-1. Download `OpenCode_UI_V2-2.0.3.zip` from the
+1. Download `OpenCode_UI_V2-2.0.6.zip` from the
    [Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.
 2. **Settings → Plugins → ⚙️ → Install Plugin from Disk…** and pick the zip.
 3. Restart the IDE.
@@ -199,9 +199,9 @@ $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.12"
 
 Output:
 
-- `build\distributions\OpenCode_UI_V2-2.0.3.zip` — installable plugin
+- `build\distributions\OpenCode_UI_V2-2.0.6.zip` — installable plugin
   (structure: `OpenCode_UI_V2/lib/*.jar`)
-- `build\libs\OpenCode_UI_V2-2.0.3.jar`
+- `build\libs\OpenCode_UI_V2-2.0.6.jar`
 
 Pre-built artifacts are attached to the
 [Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.
