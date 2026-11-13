@@ -177,6 +177,28 @@ public final class OpenCodeApiClient {
         }
     }
 
+    /**
+     * POST /api/session/{id}/interrupt with a short timeout, used on teardown
+     * (project close / IDE exit) where we must not block the UI for long and the
+     * process may be going down anyway. Best-effort: returns false on any error.
+     */
+    public boolean interruptOnClose(String sessionId) {
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + "/api/session/" + sessionId + "/interrupt"))
+                    .header("Authorization", authHeader)
+                    .header("Accept", "application/json")
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(3))
+                    .POST(HttpRequest.BodyPublishers.ofString("{}", StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+            return resp.statusCode() < 300;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private List<JsonObject> asList(JsonElement data) {
         List<JsonObject> out = new ArrayList<>();
         if (data != null && data.isJsonArray()) {

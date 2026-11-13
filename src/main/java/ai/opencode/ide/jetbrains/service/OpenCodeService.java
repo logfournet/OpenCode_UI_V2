@@ -1229,6 +1229,12 @@ public final class OpenCodeService implements Disposable {
     @Override
     public void dispose() {
         disposed.set(true);
+        // Stop any agent turn that is still running on the background OpenCode
+        // service. The service is a long-lived daemon that outlives the IDE, so
+        // without this an in-flight generation would keep running after the
+        // project/IDE closes (and even across a reboot). The session itself is
+        // kept — only the running generation is interrupted.
+        interruptFlyingTurn();
         teardown();
         poller.shutdownNow();
         listeners.clear();
@@ -1246,5 +1252,29 @@ public final class OpenCodeService implements Disposable {
             } catch (Exception ignored) {
             }
         }
+    }
+
+    /**
+     * Best-effort: interrupt the project's agent turn on the background service
+     * when the project/IDE closes. Runs on a plain daemon thread with a short
+     * HTTP timeout so it does not block UI shutdown; if the app is already going
+     * down the call simply may not complete, which is acceptable (best-effort).
+     */
+    private void interruptFlyingTurn() {
+        final OpenCodeApiClient a = api;
+        final String sid = sessionId;
+        // Only meaningful when we actually hold a working api + session and a
+        // turn is in flight.
+        if (a == null || sid == null || sid.isBlank() || !turnActive) return;
+        Thread t = new Thread(() -> {
+            try {
+                LOG.info("OpenCode: interrupting session " + sid + " on project close");
+                a.interruptOnClose(sid);
+            } catch (Exception e) {
+                LOG.debug("interrupt on close failed", e);
+            }
+        }, "opencode-interrupt-on-close");
+        t.setDaemon(true);
+        t.start();
     }
 }
