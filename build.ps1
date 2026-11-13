@@ -15,7 +15,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
-$version = "2.0.6"
+$version = "2.0.7"
 $name = "OpenCode_UI_V2"
 
 function Find-Ide {
