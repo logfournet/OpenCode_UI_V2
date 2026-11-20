@@ -109,6 +109,14 @@ public final class OpenCodeService implements Disposable {
     private final AtomicBoolean terminalCommandStarted = new AtomicBoolean(false);
     /** When the opencode TUI process was launched (for boot-delay heuristics). */
     private volatile long terminalStartedAt;
+    /**
+     * Shell process backing the OpenCode terminal. Windows orphans child
+     * processes when the IDE exits, so the TUI (and the turn it drives) used to
+     * survive an IDE quit/reboot; we keep the handle and kill the tree on close.
+     */
+    private volatile Process terminalProcess;
+    /** JVM shutdown hook: stops the turn even on a hard IDE quit. */
+    private volatile Thread shutdownHook;
 
     private final ScheduledExecutorService poller;
 
@@ -119,6 +127,15 @@ public final class OpenCodeService implements Disposable {
             t.setDaemon(true);
             return t;
         });
+        // A project service's dispose() is not guaranteed to run (or to finish
+        // its network call) on a hard IDE quit, so also hook JVM shutdown.
+        try {
+            Thread hook = new Thread(this::onShutdown, "opencode-shutdown-" + project.getName());
+            shutdownHook = hook;
+            Runtime.getRuntime().addShutdownHook(hook);
+        } catch (Throwable t) {
+            LOG.debug("shutdown hook registration failed", t);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -560,8 +577,28 @@ public final class OpenCodeService implements Disposable {
         try {
             widget.executeCommand(buildOpenCodeCommand());
             terminalStartedAt = System.currentTimeMillis();
+            captureTerminalProcess(widget);
+            // The shell's process handle can appear slightly after the command is
+            // sent; retry once so the tree can still be killed on close.
+            try {
+                poller.schedule(() -> captureTerminalProcess(widget), 2, TimeUnit.SECONDS);
+            } catch (Throwable ignored) {
+            }
         } catch (Throwable t) {
             LOG.warn("Failed to start opencode in terminal", t);
+        }
+    }
+
+    /** Remember the shell process so its whole tree can be killed on close. */
+    private void captureTerminalProcess(ShellTerminalWidget widget) {
+        try {
+            com.jediterm.terminal.ProcessTtyConnector connector = widget.getProcessTtyConnector();
+            if (connector != null) {
+                terminalProcess = connector.getProcess();
+                LOG.info("OpenCode terminal process captured: " + terminalProcess);
+            }
+        } catch (Throwable t) {
+            LOG.debug("could not capture terminal process", t);
         }
     }
 
@@ -1229,12 +1266,10 @@ public final class OpenCodeService implements Disposable {
     @Override
     public void dispose() {
         disposed.set(true);
-        // Stop any agent turn that is still running on the background OpenCode
-        // service. The service is a long-lived daemon that outlives the IDE, so
-        // without this an in-flight generation would keep running after the
-        // project/IDE closes (and even across a reboot). The session itself is
-        // kept — only the running generation is interrupted.
-        interruptFlyingTurn();
+        // Synchronously: a background thread would never get to run while the
+        // IDE is quitting, which is why the turn used to survive a close.
+        onShutdown();
+        removeShutdownHook();
         teardown();
         poller.shutdownNow();
         listeners.clear();
@@ -1255,26 +1290,86 @@ public final class OpenCodeService implements Disposable {
     }
 
     /**
-     * Best-effort: interrupt the project's agent turn on the background service
-     * when the project/IDE closes. Runs on a plain daemon thread with a short
-     * HTTP timeout so it does not block UI shutdown; if the app is already going
-     * down the call simply may not complete, which is acceptable (best-effort).
+     * Stop everything this project started, synchronously: interrupt the agent
+     * turn on the background service and kill the TUI process tree. Called from
+     * {@link #dispose()} (project close) and from the JVM shutdown hook (IDE
+     * quit / machine restart).
      */
-    private void interruptFlyingTurn() {
-        final OpenCodeApiClient a = api;
-        final String sid = sessionId;
-        // Only meaningful when we actually hold a working api + session and a
-        // turn is in flight.
-        if (a == null || sid == null || sid.isBlank() || !turnActive) return;
-        Thread t = new Thread(() -> {
+    private void onShutdown() {
+        try {
+            interruptSessionBlocking();
+        } catch (Throwable t) {
+            LOG.debug("interrupt on shutdown failed", t);
+        }
+        try {
+            killTerminalProcessTree();
+        } catch (Throwable t) {
+            LOG.debug("killing terminal tree on shutdown failed", t);
+        }
+    }
+
+    /**
+     * POST /interrupt with a short timeout. Done on the calling thread (not a
+     * daemon thread) so it actually completes while the JVM is going down.
+     */
+    private void interruptSessionBlocking() {
+        OpenCodeApiClient a = api;
+        String sid = sessionId;
+        if (a == null || sid == null || sid.isBlank()) return;
+        LOG.info("OpenCode: interrupting session " + sid + " on shutdown");
+        a.interruptOnClose(sid);
+    }
+
+    /**
+     * Kill the terminal's process tree so the TUI does not outlive the IDE.
+     *
+     * <p>Windows orphans children of a terminated process, so the {@code opencode}
+     * TUI (spawned by the terminal's shell) kept running after the IDE exited and
+     * kept driving its session — which is why a turn "still ran" after closing the
+     * app and even after a reboot. The shared {@code serve --service} daemon is
+     * never a descendant of the IDE, so it is deliberately left alone.</p>
+     */
+    private void killTerminalProcessTree() {
+        Process p = terminalProcess;
+        terminalProcess = null;
+        if (p != null) {
             try {
-                LOG.info("OpenCode: interrupting session " + sid + " on project close");
-                a.interruptOnClose(sid);
-            } catch (Exception e) {
-                LOG.debug("interrupt on close failed", e);
+                p.descendants().forEach(ProcessHandle::destroyForcibly);
+            } catch (Throwable ignored) {
             }
-        }, "opencode-interrupt-on-close");
-        t.setDaemon(true);
-        t.start();
+            try {
+                if (p.isAlive()) p.destroyForcibly();
+            } catch (Throwable ignored) {
+            }
+        }
+        // Fallback: TUIs launched through our launcher wrapper that are still
+        // descendants of this IDE (leaked panel instances / earlier sessions).
+        try {
+            ProcessHandle.current().descendants().forEach(h -> {
+                String cmd = h.info().commandLine().orElse("");
+                if (cmd.contains("opencode-launch")) {
+                    try {
+                        h.descendants().forEach(ProcessHandle::destroyForcibly);
+                    } catch (Throwable ignored) {
+                    }
+                    try {
+                        h.destroyForcibly();
+                    } catch (Throwable ignored) {
+                    }
+                }
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void removeShutdownHook() {
+        Thread h = shutdownHook;
+        shutdownHook = null;
+        if (h == null) return;
+        try {
+            Runtime.getRuntime().removeShutdownHook(h);
+        } catch (Throwable ignored) {
+            // Already shutting down - the hook will run (or is running).
+        }
     }
 }
