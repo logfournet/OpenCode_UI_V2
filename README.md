@@ -5,7 +5,10 @@ JetBrains IDEs. The plugin hosts the OpenCode TUI in a docked side panel so the
 code editor stays visible next to the agent — the familiar
 **file tree | code | agent** layout.
 
-> **Marketplace:** <https://plugins.jetbrains.com/plugin/29744-opencode-ui>
+```
+> **Marketplace:** <https://plugins.jetbrains.com/plugin/36315-opencode-ui-v2>
+>
+> **Releases:** <https://github.com/log4tic/OpenCode_UI_V2/releases>
 >
 > **Author:** logatic
 
@@ -155,14 +158,12 @@ value (e.g. `5000`).
 ## Installation
 
 ### From the JetBrains Marketplace (recommended)
-1. **Settings → Plugins → Marketplace**.
-2. Search for **OpenCode UI** and install.
+1. Open **Settings → Plugins → Marketplace**.
+2. Search for **OpenCode UI V2** and install.
 3. Restart the IDE.
 
-Marketplace page: <https://plugins.jetbrains.com/plugin/29744-opencode-ui>
-
 ### From disk
-1. Download `OpenCode_UI_V2-2.0.9.zip` from the
+1. Download `OpenCode_UI_V2-2.0.10.zip` from the
    [Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.
 2. **Settings → Plugins → ⚙️ → Install Plugin from Disk…** and pick the zip.
 3. Restart the IDE.
@@ -199,7 +200,7 @@ $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.12"
 
 Output:
 
-- `build\distributions\OpenCode_UI_V2-2.0.9.zip` — installable plugin
+- `build\distributions\OpenCode_UI_V2-2.0.10.zip` — installable plugin
   (structure: `OpenCode_UI_V2/lib/*.jar`)
 - `build\libs\OpenCode_UI_V2-2.0.9.jar`
 
@@ -248,7 +249,7 @@ src/main/resources/META-INF/plugin.xml, icons/opencode.svg
 
 ## Links
 
-- **JetBrains Marketplace:** <https://plugins.jetbrains.com/plugin/29744-opencode-ui>
+- **Releases:** <https://github.com/log4tic/OpenCode_UI_V2/releases>
 - **OpenCode:** <https://opencode.ai>
 
 ---

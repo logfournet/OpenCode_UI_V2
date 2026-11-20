@@ -1,8 +1,12 @@
 <idea-plugin>
-    <id>ai.opencode.ide.jetbrains</id>
-    <name>OpenCode UI</name>
-    <version>2.0.9</version>
-    <vendor url="https://opencode.ai">OpenCode</vendor>
+    <id>me.sfclog.opencode</id>
+    <name>OpenCode UI V2</name>
+    <version>2.0.10</version>
+    <vendor url="https://github.com/logfournet">logatic</vendor>
+
+    <icon>/META-INF/pluginIcon.svg</icon>
+
+    <icon>/META-INF/pluginIcon.svg</icon>
 
     <description><![CDATA[
       <p>OpenCode UI - AI Coding Agent for JetBrains IDEs.</p>
