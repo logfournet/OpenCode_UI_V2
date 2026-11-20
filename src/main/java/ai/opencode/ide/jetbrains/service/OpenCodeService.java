@@ -755,6 +755,9 @@ public final class OpenCodeService implements Disposable {
             terminalCommandStarted.set(false);
             terminalStartedAt = 0;
             if (old != null) {
+                // Kill the old TUI too, otherwise replacing the widget leaks an
+                // orphaned opencode process that keeps its session alive.
+                killProcessOf(old);
                 try {
                     old.dispose();
                 } catch (Exception ignored) {
@@ -1326,39 +1329,39 @@ public final class OpenCodeService implements Disposable {
      * <p>Windows orphans children of a terminated process, so the {@code opencode}
      * TUI (spawned by the terminal's shell) kept running after the IDE exited and
      * kept driving its session — which is why a turn "still ran" after closing the
-     * app and even after a reboot. The shared {@code serve --service} daemon is
-     * never a descendant of the IDE, so it is deliberately left alone.</p>
+     * app and even after a reboot.</p>
+     *
+     * <p>Only this project's captured handle is used: scanning every
+     * {@code opencode-launch} descendant of the IDE would also kill the TUIs of
+     * other projects open in the same IDE. The shared {@code serve --service}
+     * daemon is never a child of the IDE, so it is left alone.</p>
      */
     private void killTerminalProcessTree() {
         Process p = terminalProcess;
         terminalProcess = null;
-        if (p != null) {
-            try {
-                p.descendants().forEach(ProcessHandle::destroyForcibly);
-            } catch (Throwable ignored) {
-            }
-            try {
-                if (p.isAlive()) p.destroyForcibly();
-            } catch (Throwable ignored) {
-            }
-        }
-        // Fallback: TUIs launched through our launcher wrapper that are still
-        // descendants of this IDE (leaked panel instances / earlier sessions).
+        if (p == null) return;
         try {
-            ProcessHandle.current().descendants().forEach(h -> {
-                String cmd = h.info().commandLine().orElse("");
-                if (cmd.contains("opencode-launch")) {
-                    try {
-                        h.descendants().forEach(ProcessHandle::destroyForcibly);
-                    } catch (Throwable ignored) {
-                    }
-                    try {
-                        h.destroyForcibly();
-                    } catch (Throwable ignored) {
-                    }
-                }
-            });
+            p.descendants().forEach(ProcessHandle::destroyForcibly);
         } catch (Throwable ignored) {
+        }
+        try {
+            if (p.isAlive()) p.destroyForcibly();
+        } catch (Throwable ignored) {
+        }
+        LOG.info("OpenCode terminal process tree killed on close");
+    }
+
+    /** Kill the process tree of a widget that is being replaced/disposed. */
+    private void killProcessOf(ShellTerminalWidget widget) {
+        if (widget == null) return;
+        try {
+            com.jediterm.terminal.ProcessTtyConnector c = widget.getProcessTtyConnector();
+            Process p = c == null ? null : c.getProcess();
+            if (p == null) return;
+            p.descendants().forEach(ProcessHandle::destroyForcibly);
+            if (p.isAlive()) p.destroyForcibly();
+        } catch (Throwable t) {
+            LOG.debug("could not kill replaced terminal process", t);
         }
     }
 
