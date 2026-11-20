@@ -5,12 +5,13 @@ JetBrains IDEs. The plugin hosts the OpenCode TUI in a docked side panel so the
 code editor stays visible next to the agent — the familiar
 **file tree | code | agent** layout.
 
-```
 > **Marketplace:** <https://plugins.jetbrains.com/plugin/36315-opencode-ui-v2>
 >
 > **Releases:** <https://github.com/log4tic/OpenCode_UI_V2/releases>
 >
 > **Author:** logatic
+>
+> **License:** Apache-2.0
 
 ---
 
@@ -257,3 +258,22 @@ src/main/resources/META-INF/plugin.xml, icons/opencode.svg
 ## Author
 
 Developed by **logatic**.
+
+---
+
+## License
+
+Copyright 2026 logatic
+
+Licensed under the **Apache License, Version 2.0** — see [LICENSE](LICENSE) for
+the full text. You may obtain a copy of the License at
+<http://www.apache.org/licenses/LICENSE-2.0>.
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+"OpenCode", "IntelliJ IDEA", "PyCharm", "GoLand", "PhpStorm" and "RustRover" are
+trademarks of their respective owners. This plugin is an independent project and
+is not affiliated with or endorsed by them.
