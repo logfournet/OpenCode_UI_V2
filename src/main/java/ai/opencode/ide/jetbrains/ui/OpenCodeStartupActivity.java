@@ -2,7 +2,6 @@ package ai.opencode.ide.jetbrains.ui;
 
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
 import com.intellij.ide.util.PropertiesComponent;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.startup.StartupActivity;
 import org.jetbrains.annotations.NotNull;
@@ -18,7 +17,7 @@ public final class OpenCodeStartupActivity implements StartupActivity {
         if (project.isDisposed()) return;
         PropertiesComponent pc = PropertiesComponent.getInstance(project);
         if (pc.getBoolean(OpenCodeSettingsConfigurable.AUTO_CONNECT_KEY, true)) {
-            OpenCodeService svc = ServiceManager.getService(project, OpenCodeService.class);
+            OpenCodeService svc = project.getService(OpenCodeService.class);
             svc.autoConnect();
         }
     }

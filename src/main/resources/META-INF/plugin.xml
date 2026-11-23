@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>me.sfclog.opencode</id>
     <name>OpenCode UI V2</name>
-    <version>2.0.10</version>
+    <version>2.0.11</version>
     <vendor url="https://github.com/logfournet">logatic</vendor>
 
     <icon>/META-INF/pluginIcon.svg</icon>
@@ -30,10 +30,25 @@
         <li>Settings (Settings &gt; Tools &gt; OpenCode): custom binary path,
             auto-connect, tab scope, and terminal scrollback (unlimited by
             default).</li>
+        <li>Scroll long output with the title-bar scroll buttons or
+            <code>Shift+wheel</code>.</li>
       </ul>
     ]]></description>
 
     <change-notes><![CDATA[
+      <p>2.0.11 - Scroll long output. The OpenCode TUI runs in the terminal's
+      alternate screen, where there is no terminal scrollback at all, so the
+      panel gains <b>Scroll to Top / Page Up / Page Down / Scroll to Bottom</b>
+      buttons in the tool window title bar and <b>Shift+wheel</b> scrolling.
+      Both forward the TUI's own scroll bindings, so nothing desynchronises;
+      plain wheel behaviour is unchanged. Also removed every deprecated and
+      scheduled-for-removal platform API usage reported by the Plugin Verifier
+      (<code>TerminalView</code> → <code>TerminalToolWindowManager</code>,
+      terminal starter → terminal output stream,
+      <code>ServiceManager</code> → <code>Project.getService</code>,
+      VFS listener → <code>VFS_CHANGES</code> bulk listener,
+      deprecated status bar presentation overload). Minimum IDE is now
+      <b>2024.3 (build 243)</b>.</p>
       <p>2.0.9 - Only kill this project's terminal. The process-tree kill is
       scoped to the handle owned by the project, so closing one project no
       longer risks stopping an OpenCode panel open for another project in the
@@ -92,7 +107,7 @@
       while the agent works.</p>
     ]]></change-notes>
 
-    <idea-version since-build="242"/>
+    <idea-version since-build="243"/>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
@@ -177,6 +192,30 @@
                 description="Copy the whole OpenCode terminal output as a Markdown code block">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
+
+        <action id="OpenCode.ScrollToTop"
+                class="ai.opencode.ide.jetbrains.actions.ScrollToTopAction"
+                text="Scroll to Top"
+                description="Scroll the OpenCode output to the first message"
+                icon="AllIcons.Actions.MoveUp"/>
+
+        <action id="OpenCode.ScrollPageUp"
+                class="ai.opencode.ide.jetbrains.actions.ScrollPageUpAction"
+                text="Scroll Page Up"
+                description="Scroll the OpenCode output up by one page"
+                icon="AllIcons.Actions.MoveUp"/>
+
+        <action id="OpenCode.ScrollPageDown"
+                class="ai.opencode.ide.jetbrains.actions.ScrollPageDownAction"
+                text="Scroll Page Down"
+                description="Scroll the OpenCode output down by one page"
+                icon="AllIcons.Actions.MoveDown"/>
+
+        <action id="OpenCode.ScrollToBottom"
+                class="ai.opencode.ide.jetbrains.actions.ScrollToBottomAction"
+                text="Scroll to Bottom"
+                description="Scroll the OpenCode output to the last message"
+                icon="AllIcons.Actions.MoveDown"/>
 
         <group id="OpenCode.EditorActions"
                class="ai.opencode.ide.jetbrains.actions.OpenCodeActionsGroup"

@@ -4,7 +4,6 @@ import ai.opencode.ide.jetbrains.diff.DiffViewerService;
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,7 +16,7 @@ public final class OpenDiffsAction extends AnAction {
     public void actionPerformed(@NotNull AnActionEvent e) {
         Project p = e.getProject();
         if (p == null || p.isDisposed()) return;
-        OpenCodeService svc = ServiceManager.getService(p, OpenCodeService.class);
+        OpenCodeService svc = p.getService(OpenCodeService.class);
         if (svc.getLastDiffs().isEmpty()) {
             svc.refreshDiffs();
         } else {

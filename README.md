@@ -145,11 +145,28 @@ never pre-allocates, so keeping everything costs nothing until the output is
 really there. If you want a bound again, untick **Unlimited** and set a finite
 value (e.g. `5000`).
 
+### Scrolling long output
+
+The OpenCode TUI renders in the terminal's **alternate screen**, which has no
+terminal scrollback at all — that is why an older build showed no scrollbar and
+the wheel appeared to do nothing. Because the history lives inside the TUI
+itself, the plugin asks the TUI to scroll instead of scrolling a buffer:
+
+| Control | Where |
+| --- | --- |
+| Scroll to Top / Page Up / Page Down / Scroll to Bottom | Tool window title bar |
+| Page up / page down | `PageUp` / `PageDown` (the TUI's own keys, once the panel has focus) |
+| One page per notch | `Shift` + mouse wheel |
+
+Plain wheel and mouse input still go to the TUI unchanged, so interactive
+elements keep working. The scrollback settings above only apply when the TUI is
+not in the alternate screen.
+
 ---
 
 ## Requirements
 
-- A JetBrains IDE **2024.2+** (build 242+) — IntelliJ IDEA, PyCharm, and other
+- A JetBrains IDE **2024.3+** (build 243+) — IntelliJ IDEA, PyCharm, and other
   IDEs based on the IntelliJ Platform.
 - The **Terminal** plugin (bundled by default).
 - The **OpenCode CLI 2.x** installed and its background service running.
@@ -164,7 +181,7 @@ value (e.g. `5000`).
 3. Restart the IDE.
 
 ### From disk
-1. Download `OpenCode_UI_V2-2.0.10.zip` from the
+1. Download `OpenCode_UI_V2-2.0.11.zip` from the
    [Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.
 2. **Settings → Plugins → ⚙️ → Install Plugin from Disk…** and pick the zip.
 3. Restart the IDE.
@@ -201,9 +218,9 @@ $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.12"
 
 Output:
 
-- `build\distributions\OpenCode_UI_V2-2.0.10.zip` — installable plugin
+- `build\distributions\OpenCode_UI_V2-2.0.11.zip` — installable plugin
   (structure: `OpenCode_UI_V2/lib/*.jar`)
-- `build\libs\OpenCode_UI_V2-2.0.9.jar`
+- `build\libs\OpenCode_UI_V2-2.0.11.jar`
 
 Pre-built artifacts are attached to the
 [Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.

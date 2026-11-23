@@ -1,7 +1,6 @@
 package ai.opencode.ide.jetbrains.ui;
 
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.StatusBar;
 import com.intellij.openapi.wm.StatusBarWidget;
@@ -31,7 +30,7 @@ public final class OpenCodeStatusBarWidget implements StatusBarWidget, StatusBar
 
     public OpenCodeStatusBarWidget(@NotNull Project project) {
         this.project = project;
-        this.service = ServiceManager.getService(project, OpenCodeService.class);
+        this.service = project.getService(OpenCodeService.class);
         // Animate the spinner while a turn is running.
         this.spinner = new javax.swing.Timer(120, e -> {
             if (service.isBusy()) {
@@ -72,11 +71,6 @@ public final class OpenCodeStatusBarWidget implements StatusBarWidget, StatusBar
 
     @Override
     public @Nullable WidgetPresentation getPresentation() {
-        return this;
-    }
-
-    @Override
-    public @Nullable WidgetPresentation getPresentation(@NotNull PlatformType type) {
         return this;
     }
 

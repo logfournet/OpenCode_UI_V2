@@ -1,9 +1,6 @@
 package ai.opencode.ide.jetbrains.diff;
 
 import ai.opencode.ide.jetbrains.session.FileDiff;
-import ai.opencode.ide.jetbrains.session.SessionManager;
-import com.intellij.openapi.components.ServiceManager;
-import com.intellij.openapi.project.Project;
 
 /**
  * A resolved diff: the FileDiff plus the concrete before/after content.

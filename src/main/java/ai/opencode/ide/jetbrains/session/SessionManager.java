@@ -13,13 +13,18 @@ import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.openapi.vfs.VirtualFileEvent;
-import com.intellij.openapi.vfs.VirtualFileListener;
 import com.intellij.openapi.vfs.VirtualFileManager;
-import com.intellij.openapi.vfs.VirtualFileMoveEvent;
+import com.intellij.openapi.vfs.newvfs.BulkFileListener;
+import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent;
+import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent;
+import com.intellij.openapi.vfs.newvfs.events.VFileDeleteEvent;
+import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
+import com.intellij.util.messages.MessageBusConnection;
+import org.jetbrains.annotations.NotNull;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -59,6 +64,8 @@ public final class SessionManager implements Disposable {
 
     private volatile boolean turnActive = false;
 
+    private MessageBusConnection vfsConnection;
+
     public SessionManager(Project project) {
         this.project = project;
         // Listener registration must happen on the EDT.
@@ -77,22 +84,28 @@ public final class SessionManager implements Disposable {
                     }
                 }, this);
 
-                VirtualFileManager.getInstance().addVirtualFileListener(new VirtualFileListener() {
+                vfsConnection = ApplicationManager.getApplication().getMessageBus().connect(this);
+                vfsConnection.subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener() {
                     @Override
-                    public void beforeContentsChange(VirtualFileEvent event) {
-                        captureBefore(event.getFile());
+                    public void before(@NotNull List<? extends VFileEvent> events) {
+                        for (VFileEvent e : events) {
+                            if (e instanceof VFileContentChangeEvent || e instanceof VFileDeleteEvent) {
+                                VirtualFile f = e.getFile();
+                                if (f != null) captureBefore(f);
+                            }
+                        }
                     }
 
                     @Override
-                    public void beforeFileDeletion(VirtualFileEvent event) {
-                        captureBefore(event.getFile());
+                    public void after(@NotNull List<? extends VFileEvent> events) {
+                        for (VFileEvent e : events) {
+                            if (e instanceof VFileCreateEvent) {
+                                VirtualFile f = e.getFile();
+                                if (f != null && turnActive) aiCreated.add(relativize(f.getPath()));
+                            }
+                        }
                     }
-
-                    @Override
-                    public void fileCreated(VirtualFileEvent event) {
-                        if (turnActive) aiCreated.add(relativize(event.getFile().getPath()));
-                    }
-                }, this);
+                });
             } catch (Exception e) {
                 LOG.debug("listener registration failed", e);
             }

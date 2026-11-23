@@ -6,7 +6,6 @@ import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 
@@ -29,7 +28,7 @@ public final class DiffHandler {
     public void accept(ResolvedDiff rd) {
         ApplicationManager.getApplication().invokeLater(() ->
                 ApplicationManager.getApplication().runWriteAction(() -> {
-                    SessionManager sm = ServiceManager.getService(project, SessionManager.class);
+                    SessionManager sm = project.getService(SessionManager.class);
                     boolean ok = sm.writeFile(rd.diff.file, rd.after);
                     if (ok) gitAdd(rd.diff.file);
                     notifyResult("Accepted", rd.diff.file, ok);
@@ -39,7 +38,7 @@ public final class DiffHandler {
     public void reject(ResolvedDiff rd) {
         ApplicationManager.getApplication().invokeLater(() ->
                 ApplicationManager.getApplication().runWriteAction(() -> {
-                    SessionManager sm = ServiceManager.getService(project, SessionManager.class);
+                    SessionManager sm = project.getService(SessionManager.class);
                     boolean ok = rd.diff.isNewFile()
                             ? sm.deleteFile(rd.diff.file)
                             : sm.writeFile(rd.diff.file, rd.before);

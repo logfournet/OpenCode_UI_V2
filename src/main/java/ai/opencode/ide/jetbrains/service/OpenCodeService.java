@@ -10,6 +10,7 @@ import ai.opencode.ide.jetbrains.session.FileDiff;
 import ai.opencode.ide.jetbrains.session.SessionInfo;
 import ai.opencode.ide.jetbrains.session.SessionManager;
 import ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalLinkFilter;
+import ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalScrollSupport;
 import ai.opencode.ide.jetbrains.ui.OpenCodeConnectDialog;
 import ai.opencode.ide.jetbrains.ui.OpenCodeSettingsConfigurable;
 import ai.opencode.ide.jetbrains.util.ServerConnection;
@@ -21,7 +22,6 @@ import com.intellij.notification.NotificationType;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.project.Project;
@@ -30,13 +30,14 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.terminal.JBTerminalPanel;
+import com.intellij.terminal.ui.TerminalWidget;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
 import com.intellij.ui.content.ContentManager;
 import com.intellij.util.concurrency.AppExecutorUtil;
-import com.jediterm.terminal.TerminalStarter;
+import com.jediterm.terminal.TerminalOutputStream;
 import org.jetbrains.plugins.terminal.ShellTerminalWidget;
-import org.jetbrains.plugins.terminal.TerminalView;
+import org.jetbrains.plugins.terminal.TerminalToolWindowManager;
 
 import java.awt.BorderLayout;
 import java.awt.event.KeyEvent;
@@ -348,7 +349,7 @@ public final class OpenCodeService implements Disposable {
      * Return (creating if needed) the JPanel hosting the OpenCode TUI and make sure
      * it is the content of the given tool window.
      *
-     * <p>In recent platform builds {@code TerminalView.createLocalShellWidget} no
+     * <p>In recent platform builds {@code TerminalToolWindowManager.createNewSession} no
      * longer returns a detached widget: it appends a tab to the global
      * <em>Terminal</em> tool window (and, when asked to focus, activates that tool
      * window). Re-parenting {@code widget.getComponent()} into our own panel then
@@ -369,10 +370,13 @@ public final class OpenCodeService implements Disposable {
             applyTerminalScrollback();
             String wd = project.getBasePath();
             // requestFocus=false: do NOT activate the global Terminal tool window.
-            ShellTerminalWidget widget = TerminalView.getInstance(project)
-                    .createLocalShellWidget(wd, "OpenCode", false, true);
+            TerminalWidget created = TerminalToolWindowManager.getInstance(project)
+                    .createNewSession(wd, "OpenCode", null, false, true);
+            ShellTerminalWidget widget = ShellTerminalWidget.asShellJediTermWidget(created);
+            if (widget == null) throw new IllegalStateException("Terminal plugin returned a non-shell terminal widget");
             OpenCodeTerminalLinkFilter.install(project, widget);
             installEscIntercept(widget);
+            installShiftWheelScroll(widget);
 
             JPanel panel = null;
             Content moved = moveTerminalContentInto(tw, widget);
@@ -500,7 +504,8 @@ public final class OpenCodeService implements Disposable {
                         String text = sb.toString().trim();
                         ApplicationManager.getApplication().invokeLater(() -> {
                             try {
-                                widget.getTerminalStarter().sendString(text, false);
+                                TerminalOutputStream out = terminalOutput(widget);
+                                if (out != null) out.sendString(text, false);
                             } catch (Throwable t) {
                                 LOG.debug("file drop paste failed", t);
                             }
@@ -535,6 +540,24 @@ public final class OpenCodeService implements Disposable {
         }
     }
 
+    public void scrollPageUp()   { OpenCodeTerminalScrollSupport.send(terminalWidget, OpenCodeTerminalScrollSupport.Scroll.PAGE_UP); }
+    public void scrollPageDown() { OpenCodeTerminalScrollSupport.send(terminalWidget, OpenCodeTerminalScrollSupport.Scroll.PAGE_DOWN); }
+    public void scrollToTop()    { OpenCodeTerminalScrollSupport.send(terminalWidget, OpenCodeTerminalScrollSupport.Scroll.TOP); }
+    public void scrollToBottom() { OpenCodeTerminalScrollSupport.send(terminalWidget, OpenCodeTerminalScrollSupport.Scroll.BOTTOM); }
+
+    /**
+     * Non-deprecated writer for the terminal. The {@code JediTermWidget} terminal-starter
+     * accessor is deprecated in favour of the terminal output stream.
+     */
+    private static TerminalOutputStream terminalOutput(ShellTerminalWidget w) {
+        if (w == null) return null;
+        try {
+            return w.getTerminalPanel().getTerminalOutputStream();
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     /**
      * Make ESC in the OpenCode panel interrupt the running turn instead of letting
      * IntelliJ move focus to the editor.
@@ -558,14 +581,43 @@ public final class OpenCodeService implements Disposable {
                 e.consume();
                 // Forward the raw ESC byte so the TUI interrupts the running turn.
                 try {
-                    TerminalStarter starter = widget.getTerminalStarter();
-                    if (starter != null) starter.sendBytes(new byte[]{0x1b}, false);
+                    TerminalOutputStream out = terminalOutput(widget);
+                    if (out != null) out.sendBytes(new byte[]{0x1b}, false);
                 } catch (Throwable t) {
                     LOG.debug("Could not forward ESC to the OpenCode TUI", t);
                 }
             });
         } catch (Throwable t) {
             LOG.warn("Could not install ESC intercept on the OpenCode terminal", t);
+        }
+    }
+
+    /**
+     * Translates Shift+wheel into the TUI's own page-scroll keys.
+     *
+     * <p>Shift+wheel is discarded by both JediTerm paths — {@code encodeWheel} returns null
+     * for a shift wheel event, and {@code isRemoteMouseAction} requires no shift modifier —
+     * so nothing competes with this listener. Plain wheel is left untouched and still
+     * reaches the TUI as a mouse report.
+     */
+    private void installShiftWheelScroll(ShellTerminalWidget widget) {
+        try {
+            JBTerminalPanel panel = widget.getTerminalPanel();
+            panel.addMouseWheelListener(e -> {
+                if (!e.isShiftDown()) return;
+                int rotation = e.getWheelRotation();
+                if (rotation == 0) return;
+                e.consume();
+                OpenCodeTerminalScrollSupport.Scroll unit =
+                        OpenCodeTerminalScrollSupport.Scroll.PAGE_UP;
+                OpenCodeTerminalScrollSupport.Scroll other =
+                        OpenCodeTerminalScrollSupport.Scroll.PAGE_DOWN;
+                for (int i = 0; i < Math.min(Math.abs(rotation), 5); i++) {
+                    OpenCodeTerminalScrollSupport.send(widget, rotation < 0 ? unit : other);
+                }
+            });
+        } catch (Throwable t) {
+            LOG.warn("Could not install Shift+wheel scroll on the OpenCode terminal", t);
         }
     }
 
@@ -879,7 +931,9 @@ public final class OpenCodeService implements Disposable {
     private void typeIntoTerminal(ShellTerminalWidget w, String text, boolean submit) {
         if (project.isDisposed()) return;
         try {
-            w.getTerminalStarter().sendString(text, false);
+            TerminalOutputStream out = terminalOutput(w);
+            if (out == null) return;
+            out.sendString(text, false);
             if (submit) {
                 // Let the TUI render the typed text (and close any @mention
                 // completion popup) before submitting, so Enter starts the
@@ -888,7 +942,8 @@ public final class OpenCodeService implements Disposable {
                         () -> ApplicationManager.getApplication().invokeLater(() -> {
                             try {
                                 if (!project.isDisposed()) {
-                                    w.getTerminalStarter().sendBytes(new byte[]{'\r'}, false);
+                                    TerminalOutputStream out2 = terminalOutput(w);
+                                    if (out2 != null) out2.sendBytes(new byte[]{'\r'}, false);
                                 }
                             } catch (Throwable ignored) {
                             }
@@ -913,7 +968,8 @@ public final class OpenCodeService implements Disposable {
             ShellTerminalWidget widget = terminalWidget;
             if (widget == null) return;
             try {
-                widget.getTerminalStarter().sendString(command + "\r", false);
+                TerminalOutputStream out = terminalOutput(widget);
+                if (out != null) out.sendString(command + "\r", false);
             } catch (Throwable t) {
                 LOG.debug("sendCommandToTerminal failed", t);
             }
@@ -969,7 +1025,7 @@ public final class OpenCodeService implements Disposable {
                 } else if (was) {
                     // Turn just finished -> record it in Local History, then fetch diffs.
                     try {
-                        SessionManager sm = ServiceManager.getService(project, SessionManager.class);
+                        SessionManager sm = project.getService(SessionManager.class);
                         if (sm != null) sm.onTurnEnd();
                     } catch (Exception ignored) {
                     }
@@ -1043,7 +1099,7 @@ public final class OpenCodeService implements Disposable {
                 turnActive = true;
                 notifyChanged();
                 try {
-                    SessionManager sm = ServiceManager.getService(project, SessionManager.class);
+                    SessionManager sm = project.getService(SessionManager.class);
                     if (sm != null) sm.onTurnStart();
                 } catch (Exception ignored) {
                 }
@@ -1105,7 +1161,7 @@ public final class OpenCodeService implements Disposable {
                 // would yield empty "after" content for brand-new files.
                 forceVfsRefresh(diffs);
                 List<ResolvedDiff> resolved = new ArrayList<>();
-                SessionManager sm = ServiceManager.getService(project, SessionManager.class);
+                SessionManager sm = project.getService(SessionManager.class);
                 for (FileDiff fd : diffs) {
                     try {
                         String after = readCurrentContent(fd.file);

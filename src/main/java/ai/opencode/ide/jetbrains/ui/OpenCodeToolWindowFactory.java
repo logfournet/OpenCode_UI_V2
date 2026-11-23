@@ -4,8 +4,11 @@ import ai.opencode.ide.jetbrains.actions.CopyOutputAction;
 import ai.opencode.ide.jetbrains.actions.InterruptAction;
 import ai.opencode.ide.jetbrains.actions.NewSessionAction;
 import ai.opencode.ide.jetbrains.actions.OpenDiffsAction;
+import ai.opencode.ide.jetbrains.actions.ScrollPageDownAction;
+import ai.opencode.ide.jetbrains.actions.ScrollPageUpAction;
+import ai.opencode.ide.jetbrains.actions.ScrollToBottomAction;
+import ai.opencode.ide.jetbrains.actions.ScrollToTopAction;
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
@@ -30,14 +33,18 @@ public final class OpenCodeToolWindowFactory implements ToolWindowFactory, DumbA
 
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
-        OpenCodeService svc = ServiceManager.getService(project, OpenCodeService.class);
+        OpenCodeService svc = project.getService(OpenCodeService.class);
         svc.ensureTerminal(toolWindow);
         // Quick actions in the tool window title bar.
         toolWindow.setTitleActions(List.of(
                 new NewSessionAction(),
                 new InterruptAction(),
                 new OpenDiffsAction(),
-                new CopyOutputAction()
+                new CopyOutputAction(),
+                new ScrollToTopAction(),
+                new ScrollPageUpAction(),
+                new ScrollPageDownAction(),
+                new ScrollToBottomAction()
         ));
     }
 }

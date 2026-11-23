@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "ai.opencode"
-version = "2.0.10"
+version = "2.0.11"
 
 repositories {
     mavenCentral()
@@ -30,10 +30,25 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "242"
+            sinceBuild = "243"
         }
 
         changeNotes = """
+            <h2>2.0.11</h2>
+            <ul>
+                <li>Scroll long agent output: Scroll to Top / Page Up / Page Down /
+                    Scroll to Bottom buttons in the tool window title bar, plus
+                    Shift+wheel. The TUI runs in the terminal's alternate screen,
+                    where there is no terminal scrollback, so these forward the
+                    TUI's own scroll bindings.</li>
+                <li>Removed all deprecated and scheduled-for-removal platform API
+                    usages (<code>TerminalView</code>,
+                    <code>getTerminalStarter</code>, <code>ServiceManager</code>,
+                    <code>VirtualFileManager.addVirtualFileListener</code>,
+                    <code>FileEditorManager.openTextEditor</code>,
+                    <code>StatusBarWidget.getPresentation(PlatformType)</code>).</li>
+                <li>Minimum IDE raised to 2024.3 (build 243).</li>
+            </ul>
             <h2>2.0.5</h2>
             <ul>
                 <li>Fix the panel being replaced by "This view is not available until

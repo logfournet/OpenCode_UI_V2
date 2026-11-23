@@ -3,7 +3,6 @@ package ai.opencode.ide.jetbrains.actions;
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,7 +16,7 @@ public final class QuickLaunchAction extends AnAction {
     public void actionPerformed(@NotNull AnActionEvent e) {
         Project p = e.getProject();
         if (p == null || p.isDisposed()) return;
-        ServiceManager.getService(p, OpenCodeService.class).focusOrCreateTerminal();
+        p.getService(OpenCodeService.class).focusOrCreateTerminal();
     }
 
     @Override

@@ -5,7 +5,6 @@ import ai.opencode.ide.jetbrains.util.OpenCodeReference;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import org.jetbrains.annotations.NotNull;
@@ -36,7 +35,7 @@ public final class OpenCodeAskWithPromptAction extends AnAction {
         // Reference first (space-terminated) so the @mention popup is closed
         // before the request is submitted.
         String text = ref.isEmpty() ? prompt.trim() : ref + " " + prompt.trim();
-        ServiceManager.getService(project, OpenCodeService.class).focusOrCreateTerminalAndRun(text);
+        project.getService(OpenCodeService.class).focusOrCreateTerminalAndRun(text);
     }
 
     @Override

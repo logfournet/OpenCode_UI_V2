@@ -5,7 +5,6 @@ import ai.opencode.ide.jetbrains.util.OpenCodeReference;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
@@ -35,7 +34,7 @@ public class OpenCodeAskAction extends AnAction {
         // Put the reference first, terminated by a space, so the TUI's @mention
         // completion popup is already closed by the time the prompt is submitted.
         String text = ref.isEmpty() ? prompt : ref + " " + prompt;
-        ServiceManager.getService(project, OpenCodeService.class).focusOrCreateTerminalAndRun(text);
+        project.getService(OpenCodeService.class).focusOrCreateTerminalAndRun(text);
     }
 
     @Override

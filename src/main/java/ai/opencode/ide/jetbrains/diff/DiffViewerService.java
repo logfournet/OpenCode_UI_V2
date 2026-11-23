@@ -10,7 +10,6 @@ import com.intellij.diff.util.DiffUserDataKeys;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeManager;
@@ -75,7 +74,7 @@ public final class DiffViewerService {
         public void actionPerformed(AnActionEvent e) {
             Project p = e.getProject();
             if (p == null || p.isDisposed()) return;
-            ServiceManager.getService(p, DiffHandler.class).accept(diff);
+            p.getService(DiffHandler.class).accept(diff);
         }
     }
 
@@ -91,7 +90,7 @@ public final class DiffViewerService {
         public void actionPerformed(AnActionEvent e) {
             Project p = e.getProject();
             if (p == null || p.isDisposed()) return;
-            ServiceManager.getService(p, DiffHandler.class).reject(diff);
+            p.getService(DiffHandler.class).reject(diff);
         }
     }
 }

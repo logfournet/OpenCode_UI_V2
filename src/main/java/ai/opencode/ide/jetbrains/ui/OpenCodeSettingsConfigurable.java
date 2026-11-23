@@ -2,7 +2,6 @@ package ai.opencode.ide.jetbrains.ui;
 
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
 import com.intellij.ide.util.PropertiesComponent;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.project.Project;
@@ -152,7 +151,7 @@ public final class OpenCodeSettingsConfigurable implements Configurable {
         pc.setValue(TERMINAL_BUFFER_KEY, newBuffer, DEFAULT_TERMINAL_BUFFER_LINES);
 
         // Reset the cached binary path so next launch picks up the new setting.
-        OpenCodeService svc = ServiceManager.getService(project, OpenCodeService.class);
+        OpenCodeService svc = project.getService(OpenCodeService.class);
         svc.resetCachedBinary();
 
         // Tab scope is applied at launch time and the terminal scrollback cap is

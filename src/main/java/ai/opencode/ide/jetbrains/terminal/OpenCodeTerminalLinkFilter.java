@@ -81,7 +81,8 @@ public final class OpenCodeTerminalLinkFilter implements HyperlinkFilter {
                 : new OpenFileDescriptor(project, file);
 
         ApplicationManager.getApplication().invokeLater(() -> {
-            var editor = FileEditorManager.getInstance(project).openTextEditor(descriptor, true);
+            descriptor.navigate(true);
+            var editor = FileEditorManager.getInstance(project).getSelectedTextEditor();
             if (editor != null && startLine > 0) {
                 var document = editor.getDocument();
                 int startIndex = Math.max(startLine - 1, 0);
