@@ -36,11 +36,14 @@ import com.intellij.ui.content.ContentFactory;
 import com.intellij.ui.content.ContentManager;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.jediterm.terminal.TerminalOutputStream;
+import com.jediterm.terminal.model.TerminalTextBuffer;
 import org.jetbrains.plugins.terminal.ShellTerminalWidget;
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager;
 
 import java.awt.BorderLayout;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseWheelEvent;
+import java.awt.event.MouseWheelListener;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -100,7 +103,7 @@ public final class OpenCodeService implements Disposable {
     private volatile String sessionId;
     private volatile String lastUserMsgId;
     private volatile boolean turnActive;
-    private final AtomicBoolean turnChecked = new AtomicBoolean(false);
+    private final Object turnLock = new Object();
 
     // Terminal UI: the OpenCode TUI lives in a docked ToolWindow panel (not an
     // editor tab), so the code editor stays visible alongside the agent.
@@ -245,13 +248,24 @@ public final class OpenCodeService implements Disposable {
         if (api == null) return;
         String base = project.getBasePath();
         String match = null;
-        List<JsonObject> sessions = api.listSessions(50, "desc");
+        String childFallback = null;
+        List<JsonObject> sessions = (base != null && !base.isBlank())
+                ? api.listSessions(50, "desc", base, false)
+                : api.listSessions(50, "desc");
         for (JsonObject s : sessions) {
             String dir = locationDirectory(s);
             if (base != null && dir != null && normalize(base).equalsIgnoreCase(normalize(dir))) {
-                match = idOf(s);
-                break;
+                String parentId = stringField(s, "parentID");
+                if (parentId == null || parentId.isBlank()) {
+                    match = idOf(s);
+                    break;
+                } else if (childFallback == null) {
+                    childFallback = idOf(s);
+                }
             }
+        }
+        if (match == null) {
+            match = childFallback;
         }
         if (match == null && base == null && !sessions.isEmpty()) {
             match = idOf(sessions.get(0));
@@ -264,15 +278,21 @@ public final class OpenCodeService implements Disposable {
     }
 
     private String idOf(JsonObject s) {
-        return s.has("id") && !s.get("id").isJsonNull() ? s.get("id").getAsString() : null;
+        return stringField(s, "id");
     }
 
     private String locationDirectory(JsonObject s) {
-        if (s.has("location") && s.get("location").isJsonObject()
-                && s.getAsJsonObject("location").has("directory")) {
-            return s.getAsJsonObject("location").get("directory").getAsString();
+        if (s != null && s.has("location") && s.get("location").isJsonObject()) {
+            return stringField(s.getAsJsonObject("location"), "directory");
         }
         return null;
+    }
+
+    private static String stringField(JsonObject obj, String key) {
+        if (obj == null || key == null || !obj.has(key)) return null;
+        var el = obj.get(key);
+        if (el == null || el.isJsonNull() || !el.isJsonPrimitive()) return null;
+        return el.getAsString();
     }
 
     private String normalize(String p) {
@@ -376,7 +396,7 @@ public final class OpenCodeService implements Disposable {
             if (widget == null) throw new IllegalStateException("Terminal plugin returned a non-shell terminal widget");
             OpenCodeTerminalLinkFilter.install(project, widget);
             installEscIntercept(widget);
-            installShiftWheelScroll(widget);
+            installWheelScroll(widget);
 
             JPanel panel = null;
             Content moved = moveTerminalContentInto(tw, widget);
@@ -593,31 +613,69 @@ public final class OpenCodeService implements Disposable {
     }
 
     /**
-     * Translates Shift+wheel into the TUI's own page-scroll keys.
+     * Translates mouse-wheel events over the OpenCode TUI (alternate screen buffer)
+     * into the TUI's own scroll keybindings:
+     * <ul>
+     *   <li>Plain wheel: line scroll via {@code Ctrl+Alt+Y} / {@code Ctrl+Alt+E}
+     *       ({@code session.line.up} / {@code session.line.down}).</li>
+     *   <li>{@code Shift}+wheel (or block scroll): page scroll via {@code PageUp} /
+     *       {@code PageDown}.</li>
+     * </ul>
      *
-     * <p>Shift+wheel is discarded by both JediTerm paths — {@code encodeWheel} returns null
-     * for a shift wheel event, and {@code isRemoteMouseAction} requires no shift modifier —
-     * so nothing competes with this listener. Plain wheel is left untouched and still
-     * reaches the TUI as a mouse report.
+     * <p>JediTerm registers its own {@link MouseWheelListener}s before this runs, and
+     * AWT delivers wheel events to all registered listeners regardless of
+     * {@code e.consume()}. We therefore snapshot, remove, and wrap the existing
+     * listeners so events outside the alternate screen buffer or with Ctrl/Alt/Meta
+     * modifiers (e.g. Ctrl+wheel font zoom) pass through untouched.
      */
-    private void installShiftWheelScroll(ShellTerminalWidget widget) {
+    private void installWheelScroll(ShellTerminalWidget widget) {
         try {
             JBTerminalPanel panel = widget.getTerminalPanel();
+            MouseWheelListener[] existing = panel.getMouseWheelListeners();
+            for (MouseWheelListener l : existing) {
+                panel.removeMouseWheelListener(l);
+            }
             panel.addMouseWheelListener(e -> {
-                if (!e.isShiftDown()) return;
+                boolean altBuffer = false;
+                try {
+                    TerminalTextBuffer buf = widget.getTerminalTextBuffer();
+                    altBuffer = buf != null && buf.isUsingAlternateBuffer();
+                } catch (Throwable ignored) {
+                }
                 int rotation = e.getWheelRotation();
-                if (rotation == 0) return;
+                boolean shouldIntercept = altBuffer
+                        && !e.isControlDown()
+                        && !e.isMetaDown()
+                        && !e.isAltDown()
+                        && rotation != 0;
+                if (!shouldIntercept) {
+                    for (MouseWheelListener l : existing) {
+                        l.mouseWheelMoved(e);
+                    }
+                    return;
+                }
+                boolean up = rotation < 0;
                 e.consume();
-                OpenCodeTerminalScrollSupport.Scroll unit =
-                        OpenCodeTerminalScrollSupport.Scroll.PAGE_UP;
-                OpenCodeTerminalScrollSupport.Scroll other =
-                        OpenCodeTerminalScrollSupport.Scroll.PAGE_DOWN;
-                for (int i = 0; i < Math.min(Math.abs(rotation), 5); i++) {
-                    OpenCodeTerminalScrollSupport.send(widget, rotation < 0 ? unit : other);
+                if (e.isShiftDown() || e.getScrollType() == MouseWheelEvent.WHEEL_BLOCK_SCROLL) {
+                    int pages = Math.min(Math.abs(rotation), 5);
+                    OpenCodeTerminalScrollSupport.send(
+                            widget,
+                            up ? OpenCodeTerminalScrollSupport.Scroll.PAGE_UP
+                                    : OpenCodeTerminalScrollSupport.Scroll.PAGE_DOWN,
+                            pages);
+                } else {
+                    int units = Math.abs(e.getUnitsToScroll());
+                    if (units == 0) units = Math.abs(rotation) * 3;
+                    int lines = Math.max(1, Math.min(units, 15));
+                    OpenCodeTerminalScrollSupport.send(
+                            widget,
+                            up ? OpenCodeTerminalScrollSupport.Scroll.LINE_UP
+                                    : OpenCodeTerminalScrollSupport.Scroll.LINE_DOWN,
+                            lines);
                 }
             });
         } catch (Throwable t) {
-            LOG.warn("Could not install Shift+wheel scroll on the OpenCode terminal", t);
+            LOG.warn("Could not install wheel scroll on the OpenCode terminal", t);
         }
     }
 
@@ -1014,25 +1072,9 @@ public final class OpenCodeService implements Disposable {
     private void pollOnBackground() {
         if (disposed.get() || api == null || sessionId == null) return;
         try {
-            Map<String, String> active = api.activeSessions();
+            Map<String, String> active = api.activeSessionsOrThrow();
             consecutiveFailures = 0;
-            boolean running = active.containsKey(sessionId);
-            boolean was = turnActive;
-            turnActive = running;
-            if (running != was) {
-                if (running) {
-                    lastUserMsgId = null;
-                } else if (was) {
-                    // Turn just finished -> record it in Local History, then fetch diffs.
-                    try {
-                        SessionManager sm = project.getService(SessionManager.class);
-                        if (sm != null) sm.onTurnEnd();
-                    } catch (Exception ignored) {
-                    }
-                    refreshDiffs(true);
-                }
-                notifyChanged();
-            }
+            handleTurnStateChange(active.containsKey(sessionId), false);
         } catch (Exception e) {
             // Server unreachable: count consecutive failures and reconnect silently
             // after a few, so a long running task / server restart does not leave
@@ -1072,7 +1114,14 @@ public final class OpenCodeService implements Disposable {
 
     private void startEventStream() {
         if (conn == null) return;
-        events = new OpenCodeEventStream(conn.url, "opencode", conn.password,
+        List<String> types = List.of(
+                "session.execution.started",
+                "session.execution.succeeded",
+                "session.execution.failed",
+                "session.execution.interrupted",
+                "session.created"
+        );
+        events = new OpenCodeEventStream(conn.url, "opencode", conn.password, types,
                 this::onEvent, this::onStreamState);
         events.start();
     }
@@ -1082,7 +1131,66 @@ public final class OpenCodeService implements Disposable {
     }
 
     private void onEvent(String type, JsonObject data) {
-        if ("server.connected".equals(type)) notifyChanged();
+        if ("server.connected".equals(type)) {
+            notifyChanged();
+            return;
+        }
+        if ("session.created".equals(type)) {
+            String parentId = stringField(data, "parentID");
+            if (parentId != null && !parentId.isBlank()) return;
+            String dir = locationDirectory(data);
+            String newSid = stringField(data, "sessionID");
+            String base = project.getBasePath();
+            if (newSid != null && !newSid.isBlank()
+                    && base != null && dir != null
+                    && normalize(base).equalsIgnoreCase(normalize(dir))) {
+                sessionId = newSid;
+                lastUserMsgId = null;
+                notifyChanged();
+            }
+            return;
+        }
+        if ("session.execution.started".equals(type)) {
+            String sid = sessionId;
+            if (sid != null && sid.equals(stringField(data, "sessionID"))) {
+                handleTurnStateChange(true, false);
+            }
+            return;
+        }
+        if ("session.execution.succeeded".equals(type)
+                || "session.execution.failed".equals(type)
+                || "session.execution.interrupted".equals(type)) {
+            String sid = sessionId;
+            if (sid != null && sid.equals(stringField(data, "sessionID"))) {
+                handleTurnStateChange(false, false);
+            }
+        }
+    }
+
+    private void handleTurnStateChange(boolean running, boolean preserveLastUserMsgId) {
+        synchronized (turnLock) {
+            if (running == turnActive) return;
+            turnActive = running;
+            if (running && !preserveLastUserMsgId) {
+                lastUserMsgId = null;
+            }
+        }
+        if (running) {
+            try {
+                SessionManager sm = project.getService(SessionManager.class);
+                if (sm != null) sm.onTurnStart();
+            } catch (Exception ignored) {
+            }
+        } else {
+            // Turn just finished -> record it in Local History, then fetch diffs.
+            try {
+                SessionManager sm = project.getService(SessionManager.class);
+                if (sm != null) sm.onTurnEnd();
+            } catch (Exception ignored) {
+            }
+            refreshDiffs(true);
+        }
+        notifyChanged();
     }
 
     /** Send a prompt to the current session. */
@@ -1096,13 +1204,7 @@ public final class OpenCodeService implements Disposable {
             String msgId = api.prompt(sid, text, files);
             if (msgId != null) {
                 lastUserMsgId = msgId;
-                turnActive = true;
-                notifyChanged();
-                try {
-                    SessionManager sm = project.getService(SessionManager.class);
-                    if (sm != null) sm.onTurnStart();
-                } catch (Exception ignored) {
-                }
+                handleTurnStateChange(true, true);
             } else {
                 notify("OpenCode", "Prompt was not accepted by the server.", NotificationType.ERROR);
             }

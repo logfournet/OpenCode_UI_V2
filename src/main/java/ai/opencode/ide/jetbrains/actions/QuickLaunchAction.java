@@ -1,6 +1,7 @@
 package ai.opencode.ide.jetbrains.actions;
 
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.Project;
@@ -13,6 +14,11 @@ import org.jetbrains.annotations.NotNull;
 public final class QuickLaunchAction extends AnAction {
 
     @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
+    }
+
+    @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
         Project p = e.getProject();
         if (p == null || p.isDisposed()) return;
@@ -21,6 +27,7 @@ public final class QuickLaunchAction extends AnAction {
 
     @Override
     public void update(@NotNull AnActionEvent e) {
-        e.getPresentation().setEnabledAndVisible(e.getProject() != null);
+        Project p = e.getProject();
+        e.getPresentation().setEnabledAndVisible(p != null && !p.isDisposed());
     }
 }

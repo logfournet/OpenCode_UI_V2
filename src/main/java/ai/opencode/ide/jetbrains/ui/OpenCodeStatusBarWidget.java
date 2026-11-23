@@ -32,10 +32,13 @@ public final class OpenCodeStatusBarWidget implements StatusBarWidget, StatusBar
         this.project = project;
         this.service = project.getService(OpenCodeService.class);
         // Animate the spinner while a turn is running.
-        this.spinner = new javax.swing.Timer(120, e -> {
+        this.spinner = new javax.swing.Timer(120, null);
+        this.spinner.addActionListener(e -> {
             if (service.isBusy()) {
                 frame = (frame + 1) % FRAMES.length;
                 refreshWidget();
+            } else {
+                spinner.stop();
             }
         });
     }
@@ -49,7 +52,7 @@ public final class OpenCodeStatusBarWidget implements StatusBarWidget, StatusBar
     public void install(@NotNull StatusBar statusBar) {
         this.statusBar = statusBar;
         service.addListener(refresh);
-        if (!spinner.isRunning()) spinner.start();
+        syncSpinner();
     }
 
     @Override
@@ -59,7 +62,16 @@ public final class OpenCodeStatusBarWidget implements StatusBarWidget, StatusBar
         statusBar = null;
     }
 
+    private void syncSpinner() {
+        if (statusBar != null && !project.isDisposed() && service.isBusy()) {
+            if (!spinner.isRunning()) spinner.start();
+        } else {
+            if (spinner.isRunning()) spinner.stop();
+        }
+    }
+
     private void refreshWidget() {
+        syncSpinner();
         StatusBar sb = statusBar;
         if (sb == null || project.isDisposed()) return;
         try {

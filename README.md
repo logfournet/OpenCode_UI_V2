@@ -150,17 +150,20 @@ value (e.g. `5000`).
 The OpenCode TUI renders in the terminal's **alternate screen**, which has no
 terminal scrollback at all — that is why an older build showed no scrollbar and
 the wheel appeared to do nothing. Because the history lives inside the TUI
-itself, the plugin asks the TUI to scroll instead of scrolling a buffer:
+itself, the plugin forwards wheel gestures and button clicks to the TUI's own
+scroll bindings:
 
 | Control | Where |
 | --- | --- |
+| Line-by-line scroll | Plain mouse wheel over the OpenCode panel |
+| One page per notch | `Shift` + mouse wheel |
 | Scroll to Top / Page Up / Page Down / Scroll to Bottom | Tool window title bar |
 | Page up / page down | `PageUp` / `PageDown` (the TUI's own keys, once the panel has focus) |
-| One page per notch | `Shift` + mouse wheel |
 
-Plain wheel and mouse input still go to the TUI unchanged, so interactive
-elements keep working. The scrollback settings above only apply when the TUI is
-not in the alternate screen.
+When the terminal is not in the alternate screen (e.g. a plain shell before or
+after OpenCode) or when `Ctrl`/`Alt`/`Meta` is held (such as `Ctrl` + wheel font
+zoom), wheel events pass through to the terminal untouched. The scrollback
+settings above only apply when the TUI is not in the alternate screen.
 
 ---
 
@@ -181,7 +184,7 @@ not in the alternate screen.
 3. Restart the IDE.
 
 ### From disk
-1. Download `OpenCode_UI_V2-2.0.11.zip` from the
+1. Download `OpenCode_UI_V2-2.0.12.zip` from the
    [Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.
 2. **Settings → Plugins → ⚙️ → Install Plugin from Disk…** and pick the zip.
 3. Restart the IDE.
@@ -218,9 +221,9 @@ $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.12"
 
 Output:
 
-- `build\distributions\OpenCode_UI_V2-2.0.11.zip` — installable plugin
+- `build\distributions\OpenCode_UI_V2-2.0.12.zip` — installable plugin
   (structure: `OpenCode_UI_V2/lib/*.jar`)
-- `build\libs\OpenCode_UI_V2-2.0.11.jar`
+- `build\libs\OpenCode_UI_V2-2.0.12.jar`
 
 Pre-built artifacts are attached to the
 [Releases](https://github.com/log4tic/OpenCode_UI_V2/releases) page.
@@ -247,11 +250,15 @@ src/main/resources/META-INF/plugin.xml, icons/opencode.svg
 
 ---
 
-## API notes (2.0.26, verified against a live server)
+## API notes (2.3.2, verified against a live server)
 
 - Basic auth `opencode:<password>` (password from `service.json`); missing auth
   → `401`.
-- Every `/api/*` endpoint wraps its payload in an envelope: `{"data": {...}}`.
+- Most `/api/*` endpoints wrap their payload in an envelope: `{"data": {...}}`
+  (`/api/info` returns a flat object with `version`).
+- `GET /api/session?limit=50&order=desc&directory=<cwd>&archived=false` lists
+  non-archived sessions for the project directory (top-level sessions without
+  `parentID` are preferred over child sessions).
 - `POST /api/session/{id}/prompt` body `{"text": "..."}` (the `text` field is
   required); response `data.id` is the user message id.
 - `GET /api/session/{id}/diff?from=<userMsgId>` → `data[]`:
@@ -259,9 +266,10 @@ src/main/resources/META-INF/plugin.xml, icons/opencode.svg
   there is no `before/after` (unlike v1), so the viewer reconstructs "before"
   from the patch.
 - `GET /api/session/active` → `{"data": {"ses_...": {"type":"running"}}}`.
-- SSE `/api/event`:
-  `data: {"id":"evt_...","type":"session.tool.success","data":{...}}` — the
-  stream is volatile, so the plugin reconnects and polls as a fallback.
+- SSE `/api/event?types=...`: subscribes to lifecycle events
+  (`session.execution.started`, `session.execution.succeeded`,
+  `session.execution.failed`, `session.execution.interrupted`, `session.created`)
+  — the stream is volatile, so the plugin reconnects and polls as a fallback.
 
 ---
 

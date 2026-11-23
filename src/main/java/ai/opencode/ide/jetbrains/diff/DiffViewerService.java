@@ -7,6 +7,7 @@ import com.intellij.diff.chains.SimpleDiffRequestChain;
 import com.intellij.diff.requests.DiffRequest;
 import com.intellij.diff.requests.SimpleDiffRequest;
 import com.intellij.diff.util.DiffUserDataKeys;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -14,6 +15,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.Project;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -71,6 +73,11 @@ public final class DiffViewerService {
         }
 
         @Override
+        public @NotNull ActionUpdateThread getActionUpdateThread() {
+            return ActionUpdateThread.BGT;
+        }
+
+        @Override
         public void actionPerformed(AnActionEvent e) {
             Project p = e.getProject();
             if (p == null || p.isDisposed()) return;
@@ -84,6 +91,11 @@ public final class DiffViewerService {
         RejectDiffAction(ResolvedDiff diff) {
             super("Reject (restore)");
             this.diff = diff;
+        }
+
+        @Override
+        public @NotNull ActionUpdateThread getActionUpdateThread() {
+            return ActionUpdateThread.BGT;
         }
 
         @Override

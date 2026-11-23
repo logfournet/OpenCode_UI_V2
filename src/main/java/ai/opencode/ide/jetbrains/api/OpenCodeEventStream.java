@@ -8,22 +8,25 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * SSE listener for {@code GET /api/event} of OpenCode v2.
+ * SSE listener for {@code GET /api/event} of OpenCode 2.x (verified on 2.3.2).
  *
- * Event frames look like {@code data: {"id":"evt_...","type":"session.step.ended","data":{...}}},
- * observed on 2.0.26. The stream is volatile by contract, so we reconnect forever
- * with a small backoff; the service additionally polls REST endpoints as a fallback.
+ * Event frames look like {@code data: {"id":"evt_...","type":"session.execution.succeeded","data":{...}}}.
+ * The stream is volatile by contract, so we reconnect forever with a small backoff;
+ * the service additionally polls REST endpoints as a fallback.
  */
 public final class OpenCodeEventStream implements AutoCloseable {
 
@@ -40,8 +43,27 @@ public final class OpenCodeEventStream implements AutoCloseable {
     public OpenCodeEventStream(String baseUrl, String username, String password,
                                BiConsumer<String, JsonObject> listener,
                                Consumer<Boolean> stateListener) {
+        this(baseUrl, username, password, null, listener, stateListener);
+    }
+
+    public OpenCodeEventStream(String baseUrl, String username, String password,
+                               List<String> eventTypes,
+                               BiConsumer<String, JsonObject> listener,
+                               Consumer<Boolean> stateListener) {
         String base = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-        this.uri = URI.create(base + "/api/event");
+        StringBuilder url = new StringBuilder(base).append("/api/event");
+        if (eventTypes != null && !eventTypes.isEmpty()) {
+            List<String> params = new ArrayList<>();
+            for (String t : eventTypes) {
+                if (t != null && !t.isBlank()) {
+                    params.add("types=" + URLEncoder.encode(t, StandardCharsets.UTF_8));
+                }
+            }
+            if (!params.isEmpty()) {
+                url.append('?').append(String.join("&", params));
+            }
+        }
+        this.uri = URI.create(url.toString());
         String credentials = username + ":" + (password == null ? "" : password);
         this.authHeader = "Basic " + Base64.getEncoder()
                 .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
@@ -83,6 +105,10 @@ public final class OpenCodeEventStream implements AutoCloseable {
         HttpResponse<InputStream> resp = client.send(req, HttpResponse.BodyHandlers.ofInputStream());
         current = resp;
         if (resp.statusCode() != 200) {
+            try {
+                resp.body().close();
+            } catch (Exception ignored) {
+            }
             stateListener.accept(false);
             return;
         }

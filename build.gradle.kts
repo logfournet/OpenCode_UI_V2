@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "ai.opencode"
-version = "2.0.11"
+version = "2.0.12"
 
 repositories {
     mavenCentral()
@@ -34,6 +34,28 @@ intellijPlatform {
         }
 
         changeNotes = """
+            <h2>2.0.12</h2>
+            <ul>
+                <li>Direct plain mouse-wheel scrolling over the OpenCode TUI panel
+                    (no <code>Shift</code> required), using OpenCode's global
+                    line-scroll bindings (<code>Ctrl+Alt+Y</code> /
+                    <code>Ctrl+Alt+E</code>). <code>Shift</code>+wheel still
+                    scrolls faster by one page per notch, and Scroll to Top /
+                    Scroll to Bottom now send <code>Ctrl+G</code> /
+                    <code>Ctrl+Alt+G</code> so they work even while the prompt is
+                    focused. Plain shell output and <code>Ctrl</code>+wheel zoom
+                    pass through untouched.</li>
+                <li>JetBrains Platform runtime fixes: migrated startup hook to
+                    <code>ProjectActivity</code>, moved every action's update to
+                    <code>ActionUpdateThread.BGT</code>, gave every title-bar
+                    button a distinct icon and tooltip, and stopped the
+                    status-bar spinner timer while idle.</li>
+                <li>OpenCode v2.3.2 API alignment: filtered
+                    <code>/api/event?types=...</code> SSE lifecycle tracking,
+                    directory-scoped non-archived top-level session discovery,
+                    fixed poll-based auto-reconnect, and Local History start
+                    labels for turns started in the TUI.</li>
+            </ul>
             <h2>2.0.11</h2>
             <ul>
                 <li>Scroll long agent output: Scroll to Top / Page Up / Page Down /

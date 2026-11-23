@@ -1,6 +1,7 @@
 package ai.opencode.ide.jetbrains.actions;
 
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
@@ -14,7 +15,7 @@ import org.jetbrains.annotations.NotNull;
 public final class CopyOutputAction extends AnAction {
 
     public CopyOutputAction() {
-        super("Copy Output as Markdown");
+        super("Copy Output as Markdown", "Copy the whole OpenCode terminal output as a Markdown code block", AllIcons.Actions.Copy);
     }
 
     @Override

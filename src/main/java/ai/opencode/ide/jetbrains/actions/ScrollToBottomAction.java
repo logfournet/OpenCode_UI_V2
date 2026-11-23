@@ -1,6 +1,8 @@
 package ai.opencode.ide.jetbrains.actions;
 
 import ai.opencode.ide.jetbrains.service.OpenCodeService;
+import com.intellij.icons.AllIcons;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.Project;
@@ -10,6 +12,15 @@ import org.jetbrains.annotations.NotNull;
  * Scrolls the OpenCode output to the last message.
  */
 public final class ScrollToBottomAction extends AnAction {
+
+    public ScrollToBottomAction() {
+        super("Scroll to Bottom", "Scroll the OpenCode output to the last message", AllIcons.Actions.MoveDown);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
+    }
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {

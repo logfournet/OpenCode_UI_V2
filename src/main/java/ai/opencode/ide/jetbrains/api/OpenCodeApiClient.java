@@ -7,6 +7,7 @@ import com.google.gson.JsonParser;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -19,9 +20,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Thin HTTP client for the OpenCode v2 {@code /api/*} surface (verified on 2.0.26).
+ * Thin HTTP client for the OpenCode 2.x {@code /api/*} surface (verified on 2.3.2).
  *
- * Every endpoint returns a {@code {"data": ...}} envelope. Auth is HTTP Basic
+ * Most endpoints return a {@code {"data": ...}} envelope. Auth is HTTP Basic
  * with username {@code opencode} and the password from {@code service.json}.
  *
  * Uses only JDK {@link java.net.http.HttpClient} + Gson (bundled with the IDE),
@@ -51,10 +52,14 @@ public final class OpenCodeApiClient {
     public String info() {
         try {
             JsonObject root = get("/api/info");
-            if (root.has("data") && root.getAsJsonObject("data").has("version")) {
-                return root.getAsJsonObject("data").get("version").getAsString();
+            if (root.has("data") && root.get("data").isJsonObject()) {
+                JsonObject data = root.getAsJsonObject("data");
+                if (data.has("version") && !data.get("version").isJsonNull()) {
+                    return data.get("version").getAsString();
+                }
             }
-            return root.has("version") ? root.get("version").getAsString() : "";
+            return root.has("version") && !root.get("version").isJsonNull()
+                    ? root.get("version").getAsString() : "";
         } catch (Exception e) {
             return null;
         }
@@ -62,8 +67,23 @@ public final class OpenCodeApiClient {
 
     /** GET /api/session - list sessions newest-first. */
     public List<JsonObject> listSessions(int limit, String order) {
+        return listSessions(limit, order, null, true);
+    }
+
+    /** GET /api/session - list sessions with optional directory and archived filters. */
+    public List<JsonObject> listSessions(int limit, String order, String directory, boolean includeArchived) {
+        StringBuilder sb = new StringBuilder("/api/session?limit=")
+                .append(limit)
+                .append("&order=")
+                .append(encode(order == null ? "desc" : order));
+        if (directory != null && !directory.isBlank()) {
+            sb.append("&directory=").append(encode(directory));
+        }
+        if (!includeArchived) {
+            sb.append("&archived=false");
+        }
         try {
-            JsonObject root = get("/api/session?limit=" + limit + "&order=" + order);
+            JsonObject root = get(sb.toString());
             return asList(root.get("data"));
         } catch (Exception e) {
             return new ArrayList<>();
@@ -92,7 +112,7 @@ public final class OpenCodeApiClient {
     /** GET /api/session/{id} - session detail. */
     public JsonObject getSession(String sessionId) {
         try {
-            JsonObject root = get("/api/session/" + sessionId);
+            JsonObject root = get("/api/session/" + encode(sessionId));
             JsonElement d = root.get("data");
             return d != null && d.isJsonObject() ? d.getAsJsonObject() : null;
         } catch (Exception e) {
@@ -102,10 +122,10 @@ public final class OpenCodeApiClient {
 
     /** GET /api/session/{id}/diff?from=...&to=... - per-file diffs of a turn. */
     public List<JsonObject> sessionDiff(String sessionId, String from, String to) {
-        StringBuilder sb = new StringBuilder("/api/session/").append(sessionId).append("/diff");
+        StringBuilder sb = new StringBuilder("/api/session/").append(encode(sessionId)).append("/diff");
         List<String> params = new ArrayList<>();
-        if (from != null && !from.isEmpty()) params.add("from=" + from);
-        if (to != null && !to.isEmpty()) params.add("to=" + to);
+        if (from != null && !from.isEmpty()) params.add("from=" + encode(from));
+        if (to != null && !to.isEmpty()) params.add("to=" + encode(to));
         if (!params.isEmpty()) sb.append('?').append(String.join("&", params));
         try {
             JsonObject root = get(sb.toString());
@@ -118,29 +138,40 @@ public final class OpenCodeApiClient {
     /** GET /api/session/{id}/message - message list, newest-first with order=desc. */
     public List<JsonObject> listMessages(String sessionId, String order, int limit) {
         try {
-            JsonObject root = get("/api/session/" + sessionId + "/message?order=" + order + "&limit=" + limit);
+            JsonObject root = get("/api/session/" + encode(sessionId)
+                    + "/message?order=" + encode(order == null ? "desc" : order)
+                    + "&limit=" + limit);
             return asList(root.get("data"));
         } catch (Exception e) {
             return new ArrayList<>();
         }
     }
 
-    /** GET /api/session/active - map of session id -> "running". */
-    public Map<String, String> activeSessions() {
+    /** GET /api/session/active - map of session id -> "running", propagating I/O failures. */
+    public Map<String, String> activeSessionsOrThrow() throws IOException {
         Map<String, String> map = new LinkedHashMap<>();
-        try {
-            JsonObject root = get("/api/session/active");
-            JsonElement d = root.get("data");
-            if (d != null && d.isJsonObject()) {
-                for (Map.Entry<String, JsonElement> e : d.getAsJsonObject().entrySet()) {
-                    String type = e.getValue().isJsonObject() && e.getValue().getAsJsonObject().has("type")
-                            ? e.getValue().getAsJsonObject().get("type").getAsString() : "";
-                    map.put(e.getKey(), type);
-                }
+        JsonObject root = get("/api/session/active");
+        JsonElement d = root.get("data");
+        if (d != null && d.isJsonObject()) {
+            for (Map.Entry<String, JsonElement> e : d.getAsJsonObject().entrySet()) {
+                JsonElement val = e.getValue();
+                String type = val != null && val.isJsonObject()
+                        && val.getAsJsonObject().has("type")
+                        && !val.getAsJsonObject().get("type").isJsonNull()
+                        ? val.getAsJsonObject().get("type").getAsString() : "";
+                map.put(e.getKey(), type);
             }
-        } catch (Exception ignored) {
         }
         return map;
+    }
+
+    /** GET /api/session/active - map of session id -> "running". */
+    public Map<String, String> activeSessions() {
+        try {
+            return activeSessionsOrThrow();
+        } catch (Exception ignored) {
+            return new LinkedHashMap<>();
+        }
     }
 
     /**
@@ -156,7 +187,7 @@ public final class OpenCodeApiClient {
             body.add("files", arr);
         }
         try {
-            JsonObject root = post("/api/session/" + sessionId + "/prompt", body.toString());
+            JsonObject root = post("/api/session/" + encode(sessionId) + "/prompt", body.toString());
             JsonElement d = root.get("data");
             if (d != null && d.isJsonObject() && d.getAsJsonObject().has("id")) {
                 return d.getAsJsonObject().get("id").getAsString();
@@ -170,7 +201,7 @@ public final class OpenCodeApiClient {
     /** POST /api/session/{id}/interrupt - stops the current generation. */
     public boolean interrupt(String sessionId) {
         try {
-            post("/api/session/" + sessionId + "/interrupt", "{}");
+            post("/api/session/" + encode(sessionId) + "/interrupt", "{}");
             return true;
         } catch (Exception e) {
             return false;
@@ -185,7 +216,7 @@ public final class OpenCodeApiClient {
     public boolean interruptOnClose(String sessionId) {
         try {
             HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/api/session/" + sessionId + "/interrupt"))
+                    .uri(URI.create(baseUrl + "/api/session/" + encode(sessionId) + "/interrupt"))
                     .header("Authorization", authHeader)
                     .header("Accept", "application/json")
                     .header("Content-Type", "application/json")
@@ -197,6 +228,10 @@ public final class OpenCodeApiClient {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private static String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
     private List<JsonObject> asList(JsonElement data) {

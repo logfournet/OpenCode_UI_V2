@@ -1,10 +1,8 @@
 <idea-plugin>
     <id>me.sfclog.opencode</id>
     <name>OpenCode UI V2</name>
-    <version>2.0.11</version>
+    <version>2.0.12</version>
     <vendor url="https://github.com/logfournet">logatic</vendor>
-
-    <icon>/META-INF/pluginIcon.svg</icon>
 
     <icon>/META-INF/pluginIcon.svg</icon>
 
@@ -30,12 +28,25 @@
         <li>Settings (Settings &gt; Tools &gt; OpenCode): custom binary path,
             auto-connect, tab scope, and terminal scrollback (unlimited by
             default).</li>
-        <li>Scroll long output with the title-bar scroll buttons or
-            <code>Shift+wheel</code>.</li>
+        <li>Scroll long output directly with the mouse wheel (line by line),
+            <code>Shift+wheel</code> (by page), or the title-bar scroll buttons.</li>
       </ul>
     ]]></description>
 
     <change-notes><![CDATA[
+      <p>2.0.12 - Direct plain mouse-wheel scrolling over the OpenCode TUI
+      panel (no <code>Shift</code> needed) using <code>Ctrl+Alt+Y</code> /
+      <code>Ctrl+Alt+E</code>, faster <code>Shift+wheel</code> page scroll,
+      and <code>Ctrl+G</code> / <code>Ctrl+Alt+G</code> for Scroll to Top /
+      Bottom so they work even with the prompt focused. JetBrains Platform
+      runtime fixes: migrated startup to <code>ProjectActivity</code>, set
+      <code>ActionUpdateThread.BGT</code> on every action, gave all title-bar
+      buttons distinct icons and tooltips, and stopped the status-bar spinner
+      timer while idle. OpenCode v2.3.2 API alignment: filtered
+      <code>/api/event?types=...</code> SSE lifecycle tracking,
+      directory-scoped non-archived top-level session discovery, fixed
+      poll-based auto-reconnect, and Local History start labels for TUI
+      turns.</p>
       <p>2.0.11 - Scroll long output. The OpenCode TUI runs in the terminal's
       alternate screen, where there is no terminal scrollback at all, so the
       panel gains <b>Scroll to Top / Page Up / Page Down / Scroll to Bottom</b>
@@ -170,26 +181,30 @@
         <action id="OpenCode.NewSession"
                 class="ai.opencode.ide.jetbrains.actions.NewSessionAction"
                 text="OpenCode: New Session"
-                description="Start a fresh OpenCode session">
+                description="Start a fresh OpenCode session"
+                icon="AllIcons.General.Add">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
         <action id="OpenCode.Interrupt"
                 class="ai.opencode.ide.jetbrains.actions.InterruptAction"
                 text="OpenCode: Stop"
-                description="Interrupt the current OpenCode generation"/>
+                description="Interrupt the current OpenCode generation"
+                icon="AllIcons.Actions.Suspend"/>
 
         <action id="OpenCode.OpenDiffs"
                 class="ai.opencode.ide.jetbrains.actions.OpenDiffsAction"
                 text="OpenCode: Review Diffs"
-                description="Show the diff of the last OpenCode turn">
+                description="Show the diff of the last OpenCode turn"
+                icon="AllIcons.Actions.Diff">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
         <action id="OpenCode.CopyOutput"
                 class="ai.opencode.ide.jetbrains.actions.CopyOutputAction"
                 text="OpenCode: Copy Output as Markdown"
-                description="Copy the whole OpenCode terminal output as a Markdown code block">
+                description="Copy the whole OpenCode terminal output as a Markdown code block"
+                icon="AllIcons.Actions.Copy">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
@@ -203,13 +218,13 @@
                 class="ai.opencode.ide.jetbrains.actions.ScrollPageUpAction"
                 text="Scroll Page Up"
                 description="Scroll the OpenCode output up by one page"
-                icon="AllIcons.Actions.MoveUp"/>
+                icon="AllIcons.General.ChevronUp"/>
 
         <action id="OpenCode.ScrollPageDown"
                 class="ai.opencode.ide.jetbrains.actions.ScrollPageDownAction"
                 text="Scroll Page Down"
                 description="Scroll the OpenCode output down by one page"
-                icon="AllIcons.Actions.MoveDown"/>
+                icon="AllIcons.General.ChevronDown"/>
 
         <action id="OpenCode.ScrollToBottom"
                 class="ai.opencode.ide.jetbrains.actions.ScrollToBottomAction"
