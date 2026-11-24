@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "ai.opencode"
-version = "2.0.12"
+version = "2.0.13"
 
 repositories {
     mavenCentral()
@@ -34,6 +34,14 @@ intellijPlatform {
         }
 
         changeNotes = """
+            <h2>2.0.13</h2>
+            <ul>
+                <li>Fix binary compatibility with IntelliJ Platform 2024.3 (build 243)
+                    by creating the terminal widget via the public
+                    <code>TerminalToolWindowManager.createShellWidget</code> API
+                    instead of the internal 5-argument <code>createNewSession</code>
+                    overload.</li>
+            </ul>
             <h2>2.0.12</h2>
             <ul>
                 <li>Direct plain mouse-wheel scrolling over the OpenCode TUI panel

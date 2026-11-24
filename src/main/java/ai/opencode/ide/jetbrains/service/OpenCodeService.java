@@ -369,7 +369,7 @@ public final class OpenCodeService implements Disposable {
      * Return (creating if needed) the JPanel hosting the OpenCode TUI and make sure
      * it is the content of the given tool window.
      *
-     * <p>In recent platform builds {@code TerminalToolWindowManager.createNewSession} no
+     * <p>In recent platform builds {@code TerminalToolWindowManager.createShellWidget} no
      * longer returns a detached widget: it appends a tab to the global
      * <em>Terminal</em> tool window (and, when asked to focus, activates that tool
      * window). Re-parenting {@code widget.getComponent()} into our own panel then
@@ -390,8 +390,7 @@ public final class OpenCodeService implements Disposable {
             applyTerminalScrollback();
             String wd = project.getBasePath();
             // requestFocus=false: do NOT activate the global Terminal tool window.
-            TerminalWidget created = TerminalToolWindowManager.getInstance(project)
-                    .createNewSession(wd, "OpenCode", null, false, true);
+            TerminalWidget created = createShellWidget(wd);
             ShellTerminalWidget widget = ShellTerminalWidget.asShellJediTermWidget(created);
             if (widget == null) throw new IllegalStateException("Terminal plugin returned a non-shell terminal widget");
             OpenCodeTerminalLinkFilter.install(project, widget);
@@ -428,6 +427,12 @@ public final class OpenCodeService implements Disposable {
             return null;
         }
         return terminalPanel;
+    }
+
+    @SuppressWarnings("deprecation") // Public API since 2024.1 (241+); deprecated in 2026.3 in favor of 2025.3+ Reworked Terminal API
+    private TerminalWidget createShellWidget(String workingDirectory) {
+        return TerminalToolWindowManager.getInstance(project)
+                .createShellWidget(workingDirectory, "OpenCode", false, true);
     }
 
     /**

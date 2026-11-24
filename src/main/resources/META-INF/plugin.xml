@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>me.sfclog.opencode</id>
     <name>OpenCode UI V2</name>
-    <version>2.0.12</version>
+    <version>2.0.13</version>
     <vendor url="https://github.com/logfournet">logatic</vendor>
 
     <icon>/META-INF/pluginIcon.svg</icon>
@@ -34,6 +34,10 @@
     ]]></description>
 
     <change-notes><![CDATA[
+      <p>2.0.13 - Fix binary compatibility with IntelliJ Platform 2024.3
+      (build 243) by creating the terminal widget via the public
+      <code>TerminalToolWindowManager.createShellWidget</code> API instead of
+      the internal 5-argument <code>createNewSession</code> overload.</p>
       <p>2.0.12 - Direct plain mouse-wheel scrolling over the OpenCode TUI
       panel (no <code>Shift</code> needed) using <code>Ctrl+Alt+Y</code> /
       <code>Ctrl+Alt+E</code>, faster <code>Shift+wheel</code> page scroll,
